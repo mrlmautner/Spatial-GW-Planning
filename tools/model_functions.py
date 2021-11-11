@@ -33,7 +33,7 @@ def SA_mode(alternatives, params, exefile, safolder, sarun=0, soswrlim=0, verbos
     
     # Run the simulation model under historical conditions
     hist_time = time.time()
-    sa_model = vm.model(name=str(Path(sa_loc) / alternatives['names'][0]), PAR=params, sarun=sarun, exe_file=exefile)
+    sa_model = vm.model(name=str(Path(sa_loc) / alternatives['names'][0]), sarun=sarun, exe_file=exefile) #, PAR=params)
     sa_model.run_simulation_model(alt_wwtp=0, alt_basin=0, alt_leak=0, incl_obs=True, verbose=verbose)
     print('Historical alternative for model ' + '{:05d}'.format(sarun) + ' completed in: ' + str(time.time() - hist_time) + ' seconds', flush=True)
     
@@ -77,7 +77,7 @@ def SA_mode(alternatives, params, exefile, safolder, sarun=0, soswrlim=0, verbos
     for i, name in enumerate(alternatives['names'][1:]):
         if verbose: print(name, 'Alternative', flush=True)
         alt_time = time.time()
-        sa_model = vm.model(name=str(Path(sa_loc) / name), PAR=params, sarun=sarun, exe_file=exefile)
+        sa_model = vm.model(name=str(Path(sa_loc) / name), sarun=sarun, exe_file=exefile) #, PAR=params)
         sa_model.run_simulation_model(int(alternatives['wwtps'][i+1]), int(alternatives['basins'][i+1]), int(alternatives['leakrepair'][i+1]), verbose=verbose)
         if verbose: print(name, 'Simulation completed in', str(time.time() - alt_time), 'seconds', flush=True)
         print('Alternative ' + name + ' for model ' + '{:05d}'.format(sarun) + ' completed in: ' + str(time.time() - alt_time) + ' seconds', flush=True)

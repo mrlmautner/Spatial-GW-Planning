@@ -40,7 +40,7 @@ nsamples = 1000
 soswrlim = 1000000000
 sarun = 2
 params = sa.gen_param_vals(nsamples)
-safolder = '20191017'
+safolder = '20211110'
 objectives = mf.SA_mode(alternatives=alternatives, params=params, exefile=exefile, safolder=safolder, sarun=sarun, soswrlim=soswrlim, verbose=True)
     
 ### Assign supply source quantities

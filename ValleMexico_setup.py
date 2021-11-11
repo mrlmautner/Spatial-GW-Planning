@@ -15,7 +15,7 @@ from pathlib import Path
 class model():
 
     # Initializer / Instance attributes
-    def __init__(self, name, exe_file=str(Path('C:') / 'WRDAPP' / 'MF2005.1_12' / 'bin' / 'mf2005.exe'), modlims=[455000, 2107000, 539000, 2175000], cellsize=500, strt_yr=1984, end_yr=2014, ACTIVE=[Path.cwd() / 'input' / 'ACTIVE_VM_LYR1.asc', Path.cwd() / 'input' / 'ACTIVE_VM_LYR2.asc'], THICKNESS=[Path.cwd() / 'input' / 'THICK1_VM.asc', Path.cwd() / 'input' / 'THICK2_VM.asc'], GEO=[Path.cwd() / 'input' / 'GEO_VM_LYR1.asc', Path.cwd() / 'input' / 'GEO_VM_LYR2.asc'], DEM=Path.cwd() / 'input' / 'DEM_VM.asc', IH=Path.cwd() / 'input' / 'IH_1984_LT2750.asc', MUN=Path.cwd() / 'input' / 'MUN_VM.asc', PAR=Path.cwd() / 'modflow' / 'params.pval', sarun=0):
+    def __init__(self, name, exe_file=str(Path('C:') / 'WRDAPP' / 'MF2005.1_12' / 'bin' / 'mf2005.exe'), modlims=[455000, 2107000, 539000, 2175000], cellsize=500, strt_yr=1984, end_yr=2014, ACTIVE=[Path.cwd() / 'input' / 'ACTIVE_VM_LYR1.asc', Path.cwd() / 'input' / 'ACTIVE_VM_LYR2.asc'], THICKNESS=[Path.cwd() / 'input' / 'THICK1_VM.asc', Path.cwd() / 'input' / 'THICK2_VM.asc'], GEO=[Path.cwd() / 'input' / 'GEO_VM_LYR1.asc', Path.cwd() / 'input' / 'GEO_VM_LYR2.asc'], DEM=Path.cwd() / 'input' / 'DEM_VM.asc', IH=Path.cwd() / 'input' / 'IH_1984_LT2750.asc', SUBR=Path.cwd() / 'input' / 'MUN_VM.asc', MUN=Path.cwd() / 'input' / 'MUN_VM.asc', PAR=Path.cwd() / 'modflow' / 'params.pval', sarun=0):
         self.name = name # Assign name
         self.xll = modlims[0] # X coordinate of the lower left corner
         self.yll = modlims[1] # Y coordinate of the lower left corner
@@ -31,6 +31,7 @@ class model():
         self.geo = [np.loadtxt(i,skiprows=6) for i in GEO] # Geologic formations in layers 1 through n
         self.dem = np.loadtxt(DEM,skiprows=6) # Digital elevation model of the basin (model top)
         self.ih = np.loadtxt(IH,skiprows=6) # Initial hydraulic head in layer 1 and layer 2
+        self.subregions = np.loadtxt(SUBR,skiprows=6) # Geographic extent of each subregion
         self.mun = np.loadtxt(MUN,skiprows=6) # Geographic extent of each municipality
         self.nlay = 2 # This model only accepts 2 layers
         self.exe = exe_file
@@ -163,11 +164,11 @@ class model():
         for w in range(0,New_WEL.shape[0]):
             r = New_WEL[w,1]
             c = New_WEL[w,0]
-            wellmun = self.mun[int(r),int(c)]
+            wellsubregion = self.subregions[int(r),int(c)]
                     
             # Reduce the pumping amount by a percentage by municipality
             if changepumping:
-                P = float(self.altpump[np.where(self.altpump==wellmun)[0],1]) # the ratio of new pumping to old pumping
+                P = float(self.altpump[np.where(self.altpump==wellsubregion)[0],1]) # the ratio of new pumping to old pumping
             else:
                 P = 1
                     
@@ -180,10 +181,10 @@ class model():
                 
                 try:
                     WEL_Dict[per].append([LYR,r,c,New_WEL[w,4]*WEL_mult*P*R])
-                    INFO_Dict[per].append([LYR,r,c,New_WEL[w,4]*WEL_mult*P*R,wellmun]) # layer, row, column, volume (m3/d), municipality, well type
+                    INFO_Dict[per].append([LYR,r,c,New_WEL[w,4]*WEL_mult*P*R,wellsubregion]) # layer, row, column, volume (m3/d), subregion
                 except:
                     WEL_Dict[per] = [[LYR,r,c,New_WEL[w,4]*WEL_mult*P*R]]
-                    INFO_Dict[per]= [[LYR,r,c,New_WEL[w,4]*WEL_mult*P*R,wellmun]]
+                    INFO_Dict[per]= [[LYR,r,c,New_WEL[w,4]*WEL_mult*P*R,wellsubregion]]
                     
         return WEL_Dict,INFO_Dict
     
