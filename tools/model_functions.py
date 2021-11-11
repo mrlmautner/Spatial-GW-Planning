@@ -69,7 +69,7 @@ def SA_mode(alternatives, params, exefile, safolder, sarun=0, soswrlim=0, verbos
 
     try:
         heads = pltvm.get_heads([alternatives['names'][0]], sarun)
-        energy[0], energy_subregion[0], wq[0], wq_subregion[0], mound[0], mound_subregion[0] = mo.get_objectives(heads[alternatives['names'][0]], sa_model.wells, sa_model.landuse, sa_model.dem, sa_model.actv, sa_model.botm, sa_model.mun)
+        energy[0], energy_subregion[0], wq[0], wq_subregion[0], mound[0], mound_subregion[0] = mo.get_objectives(heads[alternatives['names'][0]], sa_model.wells, sa_model.landuse, sa_model.dem, sa_model.actv, sa_model.botm, subregion_array)
     except:
         energy[0], energy_subregion[0], wq[0], wq_subregion[0], mound[0], mound_subregion[0] = np.nan, np.ones(subregions)*np.nan, np.nan, np.ones(subregions)*np.nan, np.nan, np.ones(subregions)*np.nan
 
