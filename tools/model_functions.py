@@ -19,12 +19,6 @@ import shutil
 # Function to run SA: sarun is the index of the set of parameter values to use given a previously generated set of parameter values in SALib, soswrlim is the maximum sum-of-squared, weighted residuals allowed to proceed with an evaluation of the managed aquifer recharge alternatives
 def SA_mode(alternatives, params, exefile, safolder, sarun=0, soswrlim=0, verbose=False, delfolder=True):
     
-    # Load subregion raster
-    subregion_array = np.loadtxt(Path.cwd() / 'input' / 'MUN_VM.asc', skiprows=6)
-    subregion_list = np.unique(np.unique(subregion_array)) # List of subregions
-    subregion_list = subregion_list[subregion_list>0]
-    subregions = subregion_list.shape[0]
-    
     num_alts = len(alternatives['names'])
     
     # Create a folder for the sarun parameter set
@@ -60,16 +54,21 @@ def SA_mode(alternatives, params, exefile, safolder, sarun=0, soswrlim=0, verbos
     except:
         sa_err_loc.mkdir(parents=True, exist_ok=True)
         np.savetxt(sa_err_loc.joinpath('{:05d}'.format(sarun) + '.csv'), error, delimiter=',')
-        
+    
+    # Load subregion raster
+    subregion_list = np.unique(np.unique(sa_model.subregions)) # List of subregions
+#    subregion_list = subregion_list[subregion_list>0]
+    subregions = subregion_list.shape[0]
+    
     # Determine if historical model performance is adequate     
     energy, wq, mound = (np.ones(num_alts)*np.nan for i in range(3))
     energy_subregion, wq_subregion, mound_subregion = ([[] for _ in range(num_alts)] for i in range(3))
-    #heads = pltvm.get_heads([alternatives['names'][0]], sarun)
-    #energy[0], wq[0], mound[0] = mo.get_objectives(heads[alternatives['names'][0]], sa_model.wells, sa_model.landuse, sa_model.dem, sa_model.actv, sa_model.botm)
+#    heads = pltvm.get_heads([alternatives['names'][0]], sarun)
+#    energy[0], energy_subregion[0], wq[0], wq_subregion[0], mound[0], mound_subregion[0] = mo.get_objectives(heads[alternatives['names'][0]], sa_model.wells, sa_model.landuse, sa_model.dem, sa_model.actv, sa_model.botm, sa_model.subregions)
 
     try:
         heads = pltvm.get_heads([alternatives['names'][0]], sarun)
-        energy[0], energy_subregion[0], wq[0], wq_subregion[0], mound[0], mound_subregion[0] = mo.get_objectives(heads[alternatives['names'][0]], sa_model.wells, sa_model.landuse, sa_model.dem, sa_model.actv, sa_model.botm, subregion_array)
+        energy[0], energy_subregion[0], wq[0], wq_subregion[0], mound[0], mound_subregion[0] = mo.get_objectives(heads[alternatives['names'][0]], sa_model.wells, sa_model.landuse, sa_model.dem, sa_model.actv, sa_model.botm, sa_model.subregions)
     except:
         energy[0], energy_subregion[0], wq[0], wq_subregion[0], mound[0], mound_subregion[0] = np.nan, np.ones(subregions)*np.nan, np.nan, np.ones(subregions)*np.nan, np.nan, np.ones(subregions)*np.nan
 
@@ -87,10 +86,10 @@ def SA_mode(alternatives, params, exefile, safolder, sarun=0, soswrlim=0, verbos
         
         #heads = pltvm.get_heads([name], sarun)
         #energy[i+1], wq[i+1], mound[i+1] = mo.get_objectives(heads[name], sa_model.wells, sa_model.landuse, sa_model.dem, sa_model.actv, sa_model.botm)
-    
+        
         try:
             heads = pltvm.get_heads([name], sarun)
-            energy[i+1], energy_subregion[i+1], wq[i+1], wq_subregion[i+1], mound[i+1], mound_subregion[i+1] = mo.get_objectives(heads[name], sa_model.wells, sa_model.landuse, sa_model.dem, sa_model.actv, sa_model.botm, sa_model.mun)
+            energy[i+1], energy_subregion[i+1], wq[i+1], wq_subregion[i+1], mound[i+1], mound_subregion[i+1] = mo.get_objectives(heads[name], sa_model.wells, sa_model.landuse, sa_model.dem, sa_model.actv, sa_model.botm, sa_model.subregions)
         except:
             energy[i+1], energy_subregion[i+1], wq[i+1], wq_subregion[i+1], mound[i+1], mound_subregion[i+1] = np.nan, np.ones(subregions)*np.nan, np.nan, np.ones(subregions)*np.nan, np.nan, np.ones(subregions)*np.nan
         
@@ -109,6 +108,8 @@ def SA_mode(alternatives, params, exefile, safolder, sarun=0, soswrlim=0, verbos
 
     objectives_subregion = np.array([energy_subregion, wq_subregion, mound_subregion])
     sa_subregion_loc = Path.cwd().joinpath('output').joinpath('sa').joinpath('subregion').joinpath(safolder).joinpath(str(sarun))
+    
+
     for m, current_subregion in enumerate(subregion_list):
         try:
             np.savetxt(sa_subregion_loc.joinpath('{:05.0f}'.format(current_subregion) + '.csv'), objectives_subregion[:,:,m], delimiter=',')
@@ -132,7 +133,7 @@ def SA_mode(alternatives, params, exefile, safolder, sarun=0, soswrlim=0, verbos
     if delfolder:
         shutil.rmtree(str(sa_loc), ignore_errors=True)
 
-    return [error, objectives]
+    return error, objectives, objectives_subregion, heads, sa_model
 
 #def checkHOB():
 #    Path.cwd().joinpath('Input').joinpath('params').joinpath('params_' + safolder + '.csv')

@@ -38,10 +38,10 @@ with open(altpath) as a:
 
 nsamples = 1000
 soswrlim = 1000000000
-sarun = 2
+sarun = 4
 params = sa.gen_param_vals(nsamples)
-safolder = '20211110'
-objectives = mf.SA_mode(alternatives=alternatives, params=params, exefile=exefile, safolder=safolder, sarun=sarun, soswrlim=soswrlim, verbose=True)
+safolder = '20211130'
+error, objectives, objectives_subregion, heads, sa_model = mf.SA_mode(alternatives=alternatives, params=params, exefile=exefile, safolder=safolder, sarun=sarun, soswrlim=soswrlim, verbose=True)
     
 ### Assign supply source quantities
 #cutz = np.loadtxt(Path.cwd() / 'input' / 'decisions' / 'new_cutz.csv', delimiter=',', skiprows=1, usecols=(1,2,3)) # Imports from Cutzamala reservoir system

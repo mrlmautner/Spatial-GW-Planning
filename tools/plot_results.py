@@ -42,9 +42,9 @@ nrow = int((yur-yll)/cellsize) # Number of columns
 def get_heads(alt_list,safolder=-1):
     S_heads = {}
     if safolder >= 0: 
-        headpath = Path.cwd().joinpath('model_files').joinpath('modflow').joinpath(str(safolder))
+        headpath = Path.cwd().joinpath('modflow').joinpath(str(safolder))
     else:
-        headpath = Path.cwd().joinpath('model_files').joinpath('modflow')
+        headpath = Path.cwd().joinpath('modflow')
     for name in alt_list:
         S_heads[name] = bf.HeadFile(str(headpath.joinpath(name+'.hds')))
 
@@ -138,8 +138,8 @@ def plt_head_change(alt_list, mapTitles, s_heads, GEO, ACTIVE, n = (8,23), m = (
 
         fig.colorbar(im, cax=cbar_ax, label='Change in Groundwater Head (m)')
 
-        plt.savefig(Path.cwd().joinpath('model_files').joinpath('output').joinpath('plots').joinpath('head-change_'+name+'-'+alt_list[0]+'.eps'), dpi=600)
-        plt.savefig(Path.cwd().joinpath('model_files').joinpath('output').joinpath('plots').joinpath('head-change_'+name+'-'+alt_list[0]+'.png'), dpi=600)
+        plt.savefig(Path.cwd().joinpath('output').joinpath('plots').joinpath('head-change_'+name+'-'+alt_list[0]+'.eps'), dpi=600)
+        plt.savefig(Path.cwd().joinpath('output').joinpath('plots').joinpath('head-change_'+name+'-'+alt_list[0]+'.png'), dpi=600)
         plt.close()
 
 def plt_alt_objectives(alt_names, num_alt, objectives):
@@ -175,8 +175,8 @@ def plt_alt_objectives(alt_names, num_alt, objectives):
 
     # Flip subsidence measure to be minimizing
     plt.gcf().subplots_adjust(wspace=0.45,left=0.09,right=.97,bottom=0.15,top=.9)
-    plt.savefig(Path.cwd() / 'model_files' / 'output' / 'plots' / 'Objectives.eps', dpi=600)
-    plt.savefig(Path.cwd() / 'model_files' / 'output' / 'plots' / 'Objectives.png', dpi=600)
+    plt.savefig(Path.cwd() / 'output' / 'plots' / 'Objectives.eps', dpi=600)
+    plt.savefig(Path.cwd() / 'output' / 'plots' / 'Objectives.png', dpi=600)
     plt.close()
 
 def parallel_axis(nondom_results, obj_labels, opt_run):
@@ -197,7 +197,7 @@ def get_budgets(alt_list, mapTitles, s_heads):
     df_CumSum = {}
     
     for name in alt_list:
-        mf_list = flopy.utils.MfListBudget(Path.cwd().joinpath('model_files').joinpath('modflow').joinpath(name+".list"))
+        mf_list = flopy.utils.MfListBudget(Path.cwd().joinpath('modflow').joinpath(name+".list"))
         incremental, cumulative = mf_list.get_budget()
     
         df_Bdget[name], df_CumSum[name] = mf_list.get_dataframes(start_datetime="04-30-1984")
@@ -258,9 +258,9 @@ def process_hobs(folder, name, legend=['Lacustrine','Alluvial','Basalt','Volcani
     '''
     Imports head observations from .hob.out file which gives simulated and observed head values
     '''
-    obsstats = pd.read_csv(Path.cwd() / 'model_files' / 'modflow' / 'OBS_stats.csv')
+    obsstats = pd.read_csv(Path.cwd() / 'modflow' / 'OBS_stats.csv')
     obsformation = pd.read_csv(Path.cwd() / 'data_raw' / 'obs_formation.csv')
-    df = pd.read_fwf(Path.cwd().joinpath('model_files').joinpath('output').joinpath('sa').joinpath('hob').joinpath(folder).joinpath(name+'.hob_out'),widths=[22,19,22])
+    df = pd.read_fwf(Path.cwd().joinpath('output').joinpath('sa').joinpath('hob').joinpath(folder).joinpath(name+'.hob_out'),widths=[22,19,22])
     df.columns = ['simulated','observed','obs_name']
     df['LAT'] = np.nan
     df['LON'] = np.nan
@@ -275,13 +275,13 @@ def process_hobs(folder, name, legend=['Lacustrine','Alluvial','Basalt','Volcani
     
     if obsinfo_loaded:
         print('Opening observation input file...')
-        with open(str(Path.cwd() / 'model_files' / 'modflow' / 'OBS.pickle'), 'rb') as handle:
+        with open(str(Path.cwd() / 'modflow' / 'OBS.pickle'), 'rb') as handle:
             obsinfo = pickle.load(handle)
     else:
         print('Processing observation input file...')
-        mf = flopy.modflow.Modflow.load(str(Path.cwd().joinpath('model_files').joinpath('modflow').joinpath('Historical.nam')))
-        hob = flopy.modflow.ModflowHob.load(str(Path.cwd() / 'model_files' / 'modflow' / 'OBS.ob_hob'), mf)
-        winfofile = str(Path.cwd() / 'model_files' / 'modflow' / 'OBS.pickle')
+        mf = flopy.modflow.Modflow.load(str(Path.cwd().joinpath('modflow').joinpath('Historical.nam')))
+        hob = flopy.modflow.ModflowHob.load(str(Path.cwd() / 'modflow' / 'OBS.ob_hob'), mf)
+        winfofile = str(Path.cwd() / 'modflow' / 'OBS.pickle')
         with open(winfofile, 'wb') as handle:
             pickle.dump(hob.obs_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
         obsinfo = hob.obs_data
@@ -347,7 +347,7 @@ def plt_wellhydrographs(folder, name, filelocation, df=0, obsformation=0, obsinf
     if not isinstance(df, pd.DataFrame):
         df, obsinfo, obsstats, obsformation = process_hobs(folder, name, legend=legend, obsinfo_loaded=obsinfo_loaded)
     
-    filelocation = Path.cwd().joinpath('model_files').joinpath('output').joinpath('plots').joinpath('observations').joinpath(filelocation)
+    filelocation = Path.cwd().joinpath('output').joinpath('plots').joinpath('observations').joinpath(filelocation)
     filelocation.mkdir(exist_ok=True)
     
     for l in legend:
@@ -381,7 +381,7 @@ def plt_wellhydrographs(folder, name, filelocation, df=0, obsformation=0, obsinf
         
 def plt_simvsobs(name, filename, df=0, obsformation=0, obsinfo_loaded=True):
     
-    filename = str(Path.cwd() / 'model_files' / 'output' / 'plots' / 'calibration' / filename)
+    filename = str(Path.cwd() / 'output' / 'plots' / 'calibration' / filename)
     
     if not isinstance(df, pd.DataFrame):
         df, obsinfo, obsstats, obsformation = process_hobs(name, obsinfo_loaded=obsinfo_loaded)
@@ -410,7 +410,7 @@ def plt_simvsobs(name, filename, df=0, obsformation=0, obsinfo_loaded=True):
 
 def plt_simvsobsddn(name, filename, df=0, obsformation=0, obsinfo_loaded=True):
     
-    filename = str(Path.cwd() / 'model_files' / 'output' / 'plots' / 'calibration' / filename)
+    filename = str(Path.cwd() / 'output' / 'plots' / 'calibration' / filename)
     
     if not isinstance(df, pd.DataFrame):
         df, obsinfo, obsstats, obsformation = process_hobs(name, obsinfo_loaded=obsinfo_loaded)

@@ -84,8 +84,8 @@ def measureMound(heads,dem,active,LU,subregion_array,subregion_list,PhasePer):
     urban_cells = 0
     mound_cells = 0
     
-    urban_cells_subregion = np.zeros(subregion_array.shape[0])
-    mound_cells_subregion = np.zeros(subregion_array.shape[0])
+    urban_cells_subregion = np.zeros(subregion_list.shape[0])
+    mound_cells_subregion = np.zeros(subregion_list.shape[0])
     
     hmatrix = {}
     hmatrix['h1'] = np.zeros((12,dem.shape[0],dem.shape[1]))
@@ -118,7 +118,7 @@ def measureMound(heads,dem,active,LU,subregion_array,subregion_list,PhasePer):
         lu_above = np.sum(np.multiply(lu_temp,above_dem)) # Total area of cells with mounding above dem
         mound_cells += lu_above
         
-        for m, current_subregion in enumerate(subregion_array):
+        for m, current_subregion in enumerate(subregion_list):
             lu_temp_subregion = np.multiply(lu_temp, (subregion_array == current_subregion).astype(float))
             lu_active_subregion = np.sum(lu_temp_subregion) # Total urban area of active cells
             urban_cells_subregion[m] += lu_active_subregion
@@ -135,12 +135,9 @@ def measureMound(heads,dem,active,LU,subregion_array,subregion_list,PhasePer):
     return mound_per, mound_per_subregion, hmatrix
 
 def get_objectives(heads, wellinfo, landuse, dem, active, bottom, subregion_array):
-#    energy = measureEnergy(heads, wellinfo, dem)
-#    wq, wq_cells, hwq = measureWaterQuality(heads, dem, active, bottom)
-#    mound, mound_cells, urban_cells = measureMound(heads, dem, active, landuse, [132,252])
     
     subregion_list = np.unique(np.unique(subregion_array)) #List of subregions
-    subregion_list = subregion_list[subregion_list>0]
+#    subregion_list = subregion_list[subregion_list>0]
     subregions = subregion_list.shape[0]
     
     try:

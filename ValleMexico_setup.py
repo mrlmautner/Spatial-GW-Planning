@@ -15,7 +15,7 @@ from pathlib import Path
 class model():
 
     # Initializer / Instance attributes
-    def __init__(self, name, exe_file=str(Path('C:') / 'WRDAPP' / 'MF2005.1_12' / 'bin' / 'mf2005.exe'), modlims=[455000, 2107000, 539000, 2175000], cellsize=500, strt_yr=1984, end_yr=2014, ACTIVE=[Path.cwd() / 'input' / 'ACTIVE_VM_LYR1.asc', Path.cwd() / 'input' / 'ACTIVE_VM_LYR2.asc'], THICKNESS=[Path.cwd() / 'input' / 'THICK1_VM.asc', Path.cwd() / 'input' / 'THICK2_VM.asc'], GEO=[Path.cwd() / 'input' / 'GEO_VM_LYR1.asc', Path.cwd() / 'input' / 'GEO_VM_LYR2.asc'], DEM=Path.cwd() / 'input' / 'DEM_VM.asc', IH=Path.cwd() / 'input' / 'IH_1984_LT2750.asc', SUBR=Path.cwd() / 'input' / 'MUN_VM.asc', MUN=Path.cwd() / 'input' / 'MUN_VM.asc', PAR=Path.cwd() / 'modflow' / 'params.pval', sarun=0):
+    def __init__(self, name, exe_file=str(Path('C:') / 'WRDAPP' / 'MF2005.1_12' / 'bin' / 'mf2005.exe'), modlims=[455000, 2107000, 539000, 2175000], cellsize=500, strt_yr=1984, end_yr=2014, ACTIVE=[Path.cwd() / 'input' / 'ACTIVE_VM_LYR1.asc', Path.cwd() / 'input' / 'ACTIVE_VM_LYR2.asc'], THICKNESS=[Path.cwd() / 'input' / 'THICK1_VM.asc', Path.cwd() / 'input' / 'THICK2_VM.asc'], GEO=[Path.cwd() / 'input' / 'GEO_VM_LYR1.asc', Path.cwd() / 'input' / 'GEO_VM_LYR2.asc'], DEM=Path.cwd() / 'input' / 'DEM_VM.asc', IH=Path.cwd() / 'input' / 'IH_1984_LT2750.asc', SUBR=Path.cwd() / 'input' / 'CLUSTER_ED_VM.asc', MUN=Path.cwd() / 'input' / 'MUN_VM.asc', PAR=Path.cwd() / 'modflow' / 'params.pval', sarun=0):
         self.name = name # Assign name
         self.xll = modlims[0] # X coordinate of the lower left corner
         self.yll = modlims[1] # Y coordinate of the lower left corner
@@ -513,7 +513,7 @@ class model():
             for per in range(0, 360):
                 # Add injection equal to treatment capacity for each parameter period
                 WEL_DICT[per].append([1, r, c, 1 * sec2day]) # 1 m3/s recharge basins (35 cfs)
-                WEL_INFO[per].append([1, r, c, 1 * sec2day, self.mun[r, c], 1])
+                WEL_INFO[per].append([1, r, c, 1 * sec2day, self.mun[r, c]])
         
         ## Cost attributed to building recharge basins
         cost += alt_basin * 20
