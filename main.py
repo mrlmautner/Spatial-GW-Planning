@@ -12,8 +12,6 @@ import numpy as np
 '''
 The model run will create an object with the following results:
 
-    self.wwtps - list of randomly selected wastewater treatment plants where reuse has been implemented
-    self.basins - list of the row and column where each infiltration basin has been implemented
     self.mthlyleak - array with the total quantity of leaks in the system per month in m3
     self.wells - dictionary of well objects input into the MODFLOW model which includes positive flow from wastewater treatment plants, leaks, and recharge basins and negative flow from pumping wells
     self.landuse - dictionary that contains a raster and list of the percentage of land use type (NATURAL, URBAN, or WATER) per model cell for each model phase
@@ -21,10 +19,6 @@ The model run will create an object with the following results:
 
 # MODFLOW File location
 exefile = r'C:\WRDAPP\MF2005.1_12\bin\mf2005.exe'
-
-# Parameters
-model_name = 'Test_v1'
-hydrographloc = 'Test_v1'
 
 # Load alternatives
 altpath = Path.cwd() / 'input' / 'decisions' / 'alternatives.csv'
@@ -36,13 +30,11 @@ with open(altpath) as a:
         templist = line.split(',')
         alternatives[altkeys[i]] = templist
 
-nsamples = 1000
-soswrlim = 1000000000
-sarun = 4
-params = sa.gen_param_vals(nsamples)
-safolder = '20211130'
-error, objectives, objectives_subregion, heads, sa_model = mf.SA_mode(alternatives=alternatives, params=params, exefile=exefile, safolder=safolder, sarun=sarun, soswrlim=soswrlim, verbose=True)
-    
+sarun = 1
+safolder = '20220106'
+#error, objectives, objectives_subregion, heads, sa_model = mf.SA_mode(alternatives=alternatives, exefile=exefile, safolder=safolder, sarun=sarun, soswrlim=soswrlim, verbose=True)
+error, objectives, objectives_subregion, heads, hist_model = mf.hist_mode(model_name='test', exefile=exefile, safolder=safolder, sarun=sarun, verbose=True, delfolder=False)
+
 ### Assign supply source quantities
 #cutz = np.loadtxt(Path.cwd() / 'input' / 'decisions' / 'new_cutz.csv', delimiter=',', skiprows=1, usecols=(1,2,3)) # Imports from Cutzamala reservoir system
 #lerm = np.loadtxt(Path.cwd() / 'input' / 'decisions' / 'new_lerm.csv', delimiter=',', skiprows=1, usecols=(1,2,3)) # Imports from Lerma groundwater system
