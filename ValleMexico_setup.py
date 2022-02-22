@@ -405,7 +405,7 @@ class model():
                 provides a preferential flow path out of the basin
                 '''
                 
-                for n,m in enumerate(mun):
+                for n, m in enumerate(mun):
                     # Create an array for all urban model cells in this municipality
                     tempLeak = LU[l]['LIST']['URBAN'][(LU[l]['LIST']['URBAN'][:,4]==m),:4]
                     if len(tempLeak) > 0:
