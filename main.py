@@ -34,7 +34,7 @@ sarun = 1
 safolder = '20220222'
 #error, objectives, objectives_subregion, heads, sa_model = mf.SA_mode(alternatives=alternatives, exefile=exefile, safolder=safolder, sarun=sarun, soswrlim=soswrlim, verbose=True)
 model, sa_loc, error = mf.single_run(model_name='test', exefile=exefile, safolder=safolder, sarun=sarun, error_calc=True, verbose=True)
-objectives, objectives_subregion, heads = mf.process_objectives(model_name='test', safolder=safolder, model=model, sa_loc=sa_loc, sarun=sarun, verbose=True)
+objectives, objectives_subregion, heads = mf.process_objectives(model_name=model.name, safolder=safolder, model=model, sa_loc=sa_loc, sarun=sarun, verbose=True)
 
 ### Assign supply source quantities
 #cutz = np.loadtxt(Path.cwd() / 'input' / 'decisions' / 'new_cutz.csv', delimiter=',', skiprows=1, usecols=(1,2,3)) # Imports from Cutzamala reservoir system

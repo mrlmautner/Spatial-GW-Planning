@@ -35,6 +35,9 @@ class model():
         self.mun = np.loadtxt(MUN,skiprows=6) # Geographic extent of each municipality
         self.nlay = 2 # This model only accepts 2 layers
         self.exe = exe_file
+        self.unknown_pumping = []
+        self.p_multiplier = []
+        self.total_mthly_pumping = []
         
         # Create adjustable parameter dictionary
         # If PAR is a dictionary, extract parameter names and values
@@ -372,6 +375,7 @@ class model():
         for i, l in enumerate(LU_PAR):
             # Calculate unaccounted for water supply by subtraction to determine pumping in REPDA dataset
             total_mthly_pumping = max(0, self.twateruse[i] - i_other[i]) # Monthly pumping is equal to the total water use minus other supply (m3/d)
+            self.total_mthly_pumping = self.total_mthly_pumping.append(total_mthly_pumping)
             
             LEAK_array = np.zeros((LU[l]['LIST']['URBAN'].shape[0] * (PHASE_PER[i + 1] - PHASE_PER[i]),5))
             j = 0
@@ -382,11 +386,13 @@ class model():
                 
                 if total_mthly_pumping>0:
                     unknown_pumping = total_mthly_pumping - (-1 * np.sum(list(zip(*WEL_INFO[p-1]))[3])) # Unknown pumping is the total monthly pumping for each model period minus the known pumping from SACM and CAEM (which are negative)
-                                    
+                    self.unknown_pumping = self.unknown_pumping.append(unknown_pumping)
+                    
                     # Urban wells
                     WEL_DICT, WEL_INFO = self.addNewWells(New_WEL=REPDA_array[REPDA_array[:,5]==1,:5], LYR=1, WEL_Dict=WEL_DICT, INFO_Dict=WEL_INFO, WEL_mult=self.params['Q'][i], start=p, end=(p + 1), pumpwell=True)                
                     
                     p_multiplier = (unknown_pumping - total_urban_repda*self.params['Q'][i])/total_periurban_repda # Determine the monthly multiplier by dividing the estimated unknown pumping by the total pumping in the REPDA dataset
+                    self.p_multiplier = self.p_multiplier.append(p_multiplier)
                     
                     # Peri-urban wells
                     WEL_DICT, WEL_INFO = self.addNewWells(New_WEL=REPDA_array[REPDA_array[:,5]==0,:5], LYR=1, WEL_Dict=WEL_DICT, INFO_Dict=WEL_INFO, WEL_mult=p_multiplier, start=p, end=(p + 1), pumpwell=True)
@@ -444,50 +450,50 @@ class model():
         
         wel = flopy.modflow.ModflowWel(mf, stress_period_data=WEL_DICT, options=['NOPRINT'])
             
-        if verbose: print('WEL_Dict generated in', str(time.time() - newtime), 'seconds')
+#        if verbose: print('WEL_Dict generated in', str(time.time() - newtime), 'seconds')
+##        
+##        ## Create pickle file of Well Data to be available for post processing of well energy use objective
+##        winfofile = r'model_files\optimization_data\objectives\WEL_INFO_' + self.name + '.pickle'
+##        with open(winfofile, 'wb') as handle:
+##            pickle.dump(WEL_INFO, handle, protocol=pickle.HIGHEST_PROTOCOL)
+##        print('WEL_Dict saved in',str(time.time()-newtime),'seconds')
 #        
-#        ## Create pickle file of Well Data to be available for post processing of well energy use objective
-#        winfofile = r'model_files\optimization_data\objectives\WEL_INFO_' + self.name + '.pickle'
-#        with open(winfofile, 'wb') as handle:
-#            pickle.dump(WEL_INFO, handle, protocol=pickle.HIGHEST_PROTOCOL)
-#        print('WEL_Dict saved in',str(time.time()-newtime),'seconds')
-        
-        # Generate output control and solver MODFLOW packages 
-        oc, pcg = self.outputControl(mf)
-        
-        if incl_obs:
-            mf.add_existing_package(str(Path.cwd().joinpath('modflow').joinpath('OBS.ob_hob')),ptype='HOB', copy_to_model_ws=False)
-            mf.add_output(str(Path.cwd().joinpath('modflow').joinpath(self.name + '.hob.out')),unit=2001)
-            
-#        hob = flopy.modflow.ModflowHob.load(r'modflow\OBS.ob_hob', mf)
-#        winfofile = r'modflow\OBS.pickle'
-#        import pickle
-#        with open(winfofile, 'wb') as handle:
-#            pickle.dump(hob.obs_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
-#    
-        # Run Model and post processing
-        ## Write the MODFLOW model input files
-        if verbose:
-            print('Data processed in', str(time.time() - timestart), 'seconds')
-        
-            newtime = time.time()
-            print('Writing input file...')
-            
-        mf.write_input()
-        
-        if verbose:
-            print('Input file written in', str(time.time() - newtime), 'seconds')
-            
-            newtime = time.time()
-            print('Running MODFLOW model...')
-            
-        # Run the MODFLOW model
-        success, buff = mf.run_model(silent=not verbose)
-        
-        if verbose:
-            print('MODFLOW model completed run in', str(time.time() - newtime), 'seconds')
-        
-            print('Wrapper completed run in', str(time.time() - timestart), 'seconds')
+#        # Generate output control and solver MODFLOW packages 
+#        oc, pcg = self.outputControl(mf)
+#        
+#        if incl_obs:
+#            mf.add_existing_package(str(Path.cwd().joinpath('modflow').joinpath('OBS.ob_hob')),ptype='HOB', copy_to_model_ws=False)
+#            mf.add_output(str(Path.cwd().joinpath('modflow').joinpath(self.name + '.hob.out')),unit=2001)
+#            
+##        hob = flopy.modflow.ModflowHob.load(r'modflow\OBS.ob_hob', mf)
+##        winfofile = r'modflow\OBS.pickle'
+##        import pickle
+##        with open(winfofile, 'wb') as handle:
+##            pickle.dump(hob.obs_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+##    
+#        # Run Model and post processing
+#        ## Write the MODFLOW model input files
+#        if verbose:
+#            print('Data processed in', str(time.time() - timestart), 'seconds')
+#        
+#            newtime = time.time()
+#            print('Writing input file...')
+#            
+#        mf.write_input()
+#        
+#        if verbose:
+#            print('Input file written in', str(time.time() - newtime), 'seconds')
+#            
+#            newtime = time.time()
+#            print('Running MODFLOW model...')
+#            
+#        # Run the MODFLOW model
+#        success, buff = mf.run_model(silent=not verbose)
+#        
+#        if verbose:
+#            print('MODFLOW model completed run in', str(time.time() - newtime), 'seconds')
+#        
+#            print('Wrapper completed run in', str(time.time() - timestart), 'seconds')
         
         self.mthlyleak = total_mthly_leak
         self.wells = WEL_INFO

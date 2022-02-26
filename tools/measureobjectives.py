@@ -112,7 +112,7 @@ def measureMound(heads,dem,active,LU,subregion_array,subregion_list,PhasePer):
         lu_active = np.sum(lu_temp) # Total urban area of active cells
         urban_cells += lu_active
                 
-        h = np.multiply(active[0],h1) + np.multiply((active[1]-active[0]),h2)
+        h = np.multiply(active[0],h1) + np.multiply((active[1]-active[0]),h2) # Choose topmost active layer for each cell
         above_dem = np.greater(h,np.multiply(dem,active[1]))
         
         lu_above = np.sum(np.multiply(lu_temp,above_dem)) # Total area of cells with mounding above dem
