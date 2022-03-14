@@ -8,7 +8,9 @@ import numpy as np
 import pandas as pd
 import math
 import calendar
+from pathlib import Path
 
+## OLD
 def measureEnergy(heads,supply_dict,dem,bottom,subregion_list):
     E = 0
     E_subregion = np.zeros(subregion_list.shape[0])
@@ -17,7 +19,7 @@ def measureEnergy(heads,supply_dict,dem,bottom,subregion_list):
     MJc = 9.81 # MegaJoules to lift 1 MegaLiter 1 meter
     kWhc = 3.6 # MegaJoules per kWh
     
-    pd.DatetimeIndex(freq='M',start='01/31/1986',end='12/31/2013')
+#    pd.DatetimeIndex(freq='M',start='01/31/1986',end='12/31/2013')
     coords = np.zeros(2)
     
     for i, p in supply_dict.items():
@@ -74,10 +76,49 @@ def measureWaterQuality(heads,dem,active,bottom,subregion_array,subregion_list):
         
 #        wqual[t] = np.sum(wq_temp) # Sum the total depth to groundwater below the bottom of layer 1 in layer 2 over all cells
 
-    annual_wqcells = np.sum(cells_below)/(cells_clay*12)
-    annual_wqcells_subregion = np.sum(cells_below_subregion, axis=0)/(cells_clay_subregion*12)
+    annual_wqclaycells = np.sum(cells_below)/(cells_clay*12)
+    annual_wqclaycells_subregion = np.sum(cells_below_subregion, axis=0)/(cells_clay_subregion*12)
             
-    return annual_wqcells, annual_wqcells_subregion, h
+    return annual_wqclaycells, annual_wqclaycells_subregion, h
+
+## NEW
+def measureAvailability(supply_dict,subregion_array,subregion_list):
+    subregion_array = np.loadtxt(Path.cwd() / 'input' / 'CLUSTER_ED_VM.asc',skiprows=6)
+    
+    # Load population information
+    modelGridIndicators = np.loadtxt(Path.cwd() / 'input' / 'socialindicators' / 'INDICATORS-WTD-BY-POP_GRID_2010.csv', delimiter=',', skiprows=1, usecols=[0,1,2,7])
+    modelGridIndicators[:,1] = np.array([int(yi) for yi in modelGridIndicators[:,1] - 1]) # zero-index model grid column
+    modelGridIndicators[:,2] = np.array([int(xi) for xi in modelGridIndicators[:,2] - 1])
+    
+    modelGridIndicators = np.c_[ modelGridIndicators, np.zeros((modelGridIndicators.shape[0],1)) ] # add a column that holds population within 10 grid cells array
+    for row in modelGridIndicators:
+        row[0] = subregion_array[int(row[1]),int(row[2])] # reassign first column to subregion
+        row[4] = np.sum(modelGridIndicators[np.where((abs(modelGridIndicators[:,1]-row[1])<=10) & (abs(modelGridIndicators[:,2]-row[2])<=10)),3])
+    
+    modelGridIndicators = np.c_[ modelGridIndicators, np.zeros((modelGridIndicators.shape[0],1)) ] # add a column that holds cummulative monthly pumping within 10 grid cells array
+    for i, p in supply_dict.items():
+        # Start in year 2
+        if i > 23:
+            d = calendar.monthrange(1984+math.floor(i/12),(i%12)+1)[1] # number of days in stress period
+            
+            # loop through all well values
+            for n in p:
+                # Only measure energy use for pumping wells (negative flow)
+                if n[3] < 0:
+                    pumping = n[3] * (-1) * d # m3/month
+                    modelGridIndicators[np.where((abs(modelGridIndicators[:,1]-n[1])<=10) & (abs(modelGridIndicators[:,2]-n[2])<=10)),5] += pumping
+    
+    modelGridIndicators = np.c_[ modelGridIndicators, np.zeros((modelGridIndicators.shape[0],1)) ] # add a column that holds cummulative pumping divided by population within 10 grid cells array
+    modelGridIndicators[:,6] = modelGridIndicators[:,5] / modelGridIndicators[:,4]
+    
+    A_subregion = np.zeros(subregion_list.shape[0]) # initialize subregion population list
+    for s in subregion_list:
+         A_subregion_temp = modelGridIndicators[np.where(modelGridIndicators[:,0] == int(s)), 6]
+         A_subregion[int(s)] = np.nanmean(A_subregion_temp)
+    
+    A = np.nanmean(A_subregion)
+    
+    return A, A_subregion
 
 def measureMound(heads,dem,active,LU,subregion_array,subregion_list,PhasePer):
 #    mound = 0 # cumulative head above DEM during model period
@@ -134,7 +175,7 @@ def measureMound(heads,dem,active,LU,subregion_array,subregion_list,PhasePer):
         
     return mound_per, mound_per_subregion, hmatrix
 
-def get_objectives(heads, wellinfo, landuse, dem, active, bottom, subregion_array):
+def get_3objectives(heads, wellinfo, landuse, dem, active, bottom, subregion_array):
     
     subregion_list = np.unique(np.unique(subregion_array)) #List of subregions
 #    subregion_list = subregion_list[subregion_list>0]
@@ -158,6 +199,23 @@ def get_objectives(heads, wellinfo, landuse, dem, active, bottom, subregion_arra
         mound_per, mound_per_subregion, h = np.nan, np.ones(subregions)*np.nan, np.nan
 
     return energy, energy_subregion, wq_cells, wq_cells_subregion, mound_per, mound_per_subregion
+
+def get_2objectives(heads, wellinfo, landuse, dem, active, bottom, subregion_array):
+    
+    subregion_list = np.unique(np.unique(subregion_array)) #List of subregions
+#    subregion_list = subregion_list[subregion_list>0]
+    subregions = subregion_list.shape[0]
+    
+    try:
+        a, a_subregion = measureAvailability(wellinfo,subregion_array,subregion_list)
+    except:
+        a, a_subregion = np.nan, np.ones(subregions)*np.nan, np.nan
+    try:
+        mound_per, mound_per_subregion, h = measureMound(heads, dem, active, landuse, subregion_array, subregion_list, [132,252])
+    except:
+        mound_per, mound_per_subregion, h = np.nan, np.ones(subregions)*np.nan, np.nan
+
+    return a, a_subregion, mound_per, mound_per_subregion
 
 def calculate_SOSWR(heads, stats):
     '''

@@ -25,11 +25,12 @@ def single_run(model_name, exefile, safolder, sarun=0, error_calc=False, verbose
     hist_time = time.time()
     model = vm.model(name=str(Path(sa_loc) / model_name), sarun=sarun, exe_file=exefile)
     model.run_simulation_model(incl_obs=True, verbose=verbose)
+    #model.run_simulation_model(alt_pumping=np.array([[1,1],[2,1],[3,1],[4,1]]),incl_obs=True, verbose=verbose)
     print(model_name + ' for model ' + '{:05d}'.format(sarun) + ' completed in: ' + str(time.time() - hist_time) + ' seconds', flush=True)
     
     if error_calc:
         # Load head observation information for historical model run
-        stats = np.loadtxt(Path.cwd() / 'modflow' / 'OBS_stats.csv',skiprows=1)
+        stats = np.loadtxt(Path.cwd() / 'modflow' / 'OBS_JH_stats.csv',skiprows=1)
         df = pd.read_fwf(Path.cwd().joinpath('modflow').joinpath(safolder).joinpath(str(sarun)).joinpath(model_name+'.hob.out'),widths=[22,19,22])
         heads_obs = [df.columns.values.tolist()] + df.values.tolist()
         
@@ -67,9 +68,50 @@ def process_objectives(model_name, safolder, model, sa_loc, sarun=0, verbose=Fal
     # Calculate objectives
     try:
         heads = pltvm.get_heads([model_name], sarun)
-        energy, energy_subregion, wq, wq_subregion, mound, mound_subregion = mo.get_objectives(heads[model_name], model.wells, model.landuse, model.dem, model.actv, model.botm, model.subregions)
+        a, a_subregion, mound, mound_subregion = mo.get_2objectives(heads[model_name], model.wells, model.landuse, model.dem, model.actv, model.botm, model.subregions)
     except:
-        energy, energy_subregion, wq, wq_subregion, mound, mound_subregion = np.nan, np.ones(subregions)*np.nan, np.nan, np.ones(subregions)*np.nan, np.nan, np.ones(subregions)*np.nan
+        a, a_subregion, mound, mound_subregion = np.nan, np.ones(subregions)*np.nan, np.nan, np.ones(subregions)*np.nan
+    
+    mound = mound*100
+    mound_subregion = [i * 100 for i in mound_subregion]
+        
+    objectives = [a, mound]
+    hist_obj_loc = Path.cwd().joinpath('output').joinpath('spatial').joinpath('obj').joinpath(safolder)
+    try:
+        np.savetxt(hist_obj_loc.joinpath('{:05d}'.format(sarun) + '.csv'), objectives, delimiter=',')
+    except:
+        hist_obj_loc.mkdir(parents=True, exist_ok=True)
+        np.savetxt(hist_obj_loc.joinpath('{:05d}'.format(sarun) + '.csv'), objectives, delimiter=',')
+
+    objectives_subregion = np.array([a_subregion, mound_subregion])
+    hist_subregion_loc = Path.cwd().joinpath('output').joinpath('spatial').joinpath('subregion').joinpath(safolder).joinpath(str(sarun))
+
+    for m, current_subregion in enumerate(subregion_list):
+        try:
+            np.savetxt(hist_subregion_loc.joinpath('{:05.0f}'.format(current_subregion) + '.csv'), objectives_subregion[:,m], delimiter=',')
+        except:
+            hist_subregion_loc.mkdir(parents=True, exist_ok=True)
+            np.savetxt(hist_subregion_loc.joinpath('{:05.0f}'.format(current_subregion) + '.csv'), objectives_subregion[:,m], delimiter=',')
+    
+    # Delete the model directory and files for this SA parameter set
+    if delfolder:
+        shutil.rmtree(str(sa_loc), ignore_errors=True)
+    
+    return objectives, objectives_subregion, heads
+
+def process_3objectives(model_name, safolder, model, sa_loc, sarun=0, verbose=False, delfolder=False):        
+    
+    # Load subregion raster
+    subregion_list = np.unique(np.unique(model.subregions)) # List of subregions
+#    subregion_list = subregion_list[subregion_list>0]
+    subregions = subregion_list.shape[0]
+    
+    # Calculate objectives
+    try:
+        heads = pltvm.get_heads([model_name], sarun)
+        energy, energy_subregion, wq, wq_subregion, mound, mound_subregion = mo.get_3objectives(heads[model_name], model.wells, model.landuse, model.dem, model.actv, model.botm, model.subregions)
+    except:
+        energy, energy_subregion, wq, wq_subregion, mound, mound_subregion = np.nan, np.ones(subregions)*np.nan, np.nan, np.ones(subregions)*np.nan
     
     mound = mound*100
     wq = wq*100
@@ -106,8 +148,8 @@ def run_alternatives(alternatives, exefile, safolder, sarun=0, verbose=False):
     num_alts = len(alternatives['names'])
     
     # Create objective arrays    
-    energy, wq, mound = (np.ones(num_alts)*np.nan for i in range(3))
-    energy_subregion, wq_subregion, mound_subregion = ([[] for _ in range(num_alts)] for i in range(3))
+    a, mound = (np.ones(num_alts)*np.nan for i in range(2))
+    a_subregion, mound_subregion = ([[] for _ in range(num_alts)] for i in range(2))
     
     # Create dictionary to store each model for all alternatives
     model_dict = {}
@@ -135,16 +177,14 @@ def run_alternatives(alternatives, exefile, safolder, sarun=0, verbose=False):
         
         try:
             heads = pltvm.get_heads([name], sarun)
-            energy[i], energy_subregion[i], wq[i], wq_subregion[i], mound[i], mound_subregion[i] = mo.get_objectives(heads[name], alt_model.wells, alt_model.landuse, alt_model.dem, alt_model.actv, alt_model.botm, alt_model.subregions)
+            a[i], a_subregion[i], mound[i], mound_subregion[i] = mo.get_2objectives(heads[name], alt_model.wells, alt_model.landuse, alt_model.dem, alt_model.actv, alt_model.botm, alt_model.subregions)
         except:
-            energy[i], energy_subregion[i], wq[i], wq_subregion[i], mound[i], mound_subregion[i] = np.nan, np.ones(subregions)*np.nan, np.nan, np.ones(subregions)*np.nan, np.nan, np.ones(subregions)*np.nan
+            a[i], a_subregion[i], mound[i], mound_subregion[i] = np.nan, np.ones(subregions)*np.nan, np.nan, np.ones(subregions)*np.nan
         
     mound = mound*100
-    wq = wq*100
     mound_subregion = [i * 100 for i in mound_subregion]
-    wq_subregion = [i * 100 for i in wq_subregion]
         
-    objectives = [energy, wq, mound]
+    objectives = [a, mound]
     sa_obj_loc = Path.cwd().joinpath('output').joinpath('spatial').joinpath('obj').joinpath(safolder)
     try:
         np.savetxt(sa_obj_loc.joinpath('{:05d}'.format(sarun) + '.csv'), objectives, delimiter=',')
@@ -152,7 +192,7 @@ def run_alternatives(alternatives, exefile, safolder, sarun=0, verbose=False):
         sa_obj_loc.mkdir(parents=True, exist_ok=True)
         np.savetxt(sa_obj_loc.joinpath('{:05d}'.format(sarun) + '.csv'), objectives, delimiter=',')
 
-    objectives_subregion = np.array([energy_subregion, wq_subregion, mound_subregion])
+    objectives_subregion = np.array([a_subregion, mound_subregion])
     sa_subregion_loc = Path.cwd().joinpath('output').joinpath('spatial').joinpath('subregion').joinpath(safolder).joinpath(str(sarun))
     
 

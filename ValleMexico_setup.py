@@ -36,7 +36,7 @@ class model():
         self.nlay = 2 # This model only accepts 2 layers
         self.exe = exe_file
         self.unknown_pumping = []
-        self.p_multiplier = []
+        self.r_multiplier = []
         self.total_mthly_pumping = []
         
         # Create adjustable parameter dictionary
@@ -123,7 +123,7 @@ class model():
         
         return mf, dis, bas, lpf
     
-    def addNewWells(self, New_WEL, LYR, WEL_Dict=0, INFO_Dict=0, WEL_mult=1, start=0, end=0, dateType='per', coordType='xy', pumpwell=False, changepumping=False):
+    def addNewWells(self, New_WEL, LYR, WEL_Dict=0, INFO_Dict=0, WEL_mult=1, start=0, end=0, dateType='per', coordType='xy', pumpwell=False, changepumping=False, altpump_cluster=[]):
         '''
         New_WEL is an np array of the following format: X (or C), Y (or R), Start Year, End Year, Flow (m3/d)
         WEL_mult is a scalar multiplier to be applied to all wells in the data set New_WEL
@@ -169,9 +169,10 @@ class model():
             c = New_WEL[w,0]
             wellsubregion = self.subregions[int(r),int(c)]
                     
-            # Reduce the pumping amount by a percentage by municipality
+            # Reduce the pumping amount by a percentage by cluster
             if changepumping:
-                P = float(self.altpump[np.where(self.altpump==wellsubregion)[0],1]) # the ratio of new pumping to old pumping
+                ##FINISH##
+                P = float(self.altpump[np.where(self.altpump==altpump_cluster[w])[0],1]) # the ratio of new pumping to old pumping
             else:
                 P = 1
                     
@@ -248,7 +249,7 @@ class model():
         
         return oc, pcg
     
-    def run_simulation_model(self, incl_obs=False, seed=1, verbose=False):
+    def run_simulation_model(self, alt_pumping=np.array([[1,1],[2,1],[3,1],[4,1]]), alt_pumping_reduction=[0,0,0], incl_obs=False, seed=1, verbose=False):
         '''
         
         '''
@@ -276,16 +277,10 @@ class model():
         i_other = np.loadtxt(Path.cwd() / 'input' / 'decisions' / 'initial_supply.csv', delimiter=',', skiprows=1, usecols=(1,2,3)) # Initial (original) all other supplies before alternatives (m3/s)
         i_other = i_other.sum(axis=0)*sec2day # Initial other water supply for each model phase (m3/d)
         
-        # Alternatives changes to supply
-        # Import alternative pumping scheme (percentage changes in pumping), total groundwater pumping must be equal to original
-        self.altpump = np.loadtxt(Path.cwd() / 'input' / 'decisions' / 'altpump.csv', delimiter=',', skiprows=1)
-        
         # Calculate historical quantity of leaks in each municipality
         LEAK_MUN = np.loadtxt(Path('input') / 'leak' / 'LEAK_TOT_MUN.csv',delimiter=',',skiprows=1) # Total recharge percent per municipality: equal to percent of total water use (1997 values) x percent leak (~35%) x recharge percent (15%)
         leaks = np.zeros((LEAK_MUN.shape[0],phases+1))
         leaks[:,0] = LEAK_MUN[:,0]
-        for i in range(phases):
-            leaks[:,i+1] = self.params['LK'][i]*LEAK_MUN[:,1]*total_water_use[:,i] # Total leak per municipality by model phase (m3/d)
         
         # Initialize the modflow model with the boundary conditions input above
         mf, dis, bas, lpf = self.initializeFM()
@@ -358,16 +353,15 @@ class model():
         
         # Add supply wells
         # Import CONAGUA and SACM pumping datasets
-        CAEM_array = np.loadtxt(Path('input') / 'wells' / 'PUMP_C.csv', delimiter=',', skiprows=1, usecols=[1,2,7,8,11]) # pumping in m3 per day
+        CAEM_array = np.loadtxt(Path('input') / 'wells' / 'PUMP_C.csv', delimiter=',', skiprows=1, usecols=[1,2,7,8,11,15]) # pumping in m3 per day
         WEL_DICT, WEL_INFO = self.addNewWells(CAEM_array, LYR=1, WEL_Dict=WEL_DICT, INFO_Dict=WEL_INFO, pumpwell=True)
             
-        SACM_array = np.loadtxt(Path('input') / 'wells' / 'PUMP_S.csv',delimiter=',', skiprows=1, usecols=[1,2,7,8,11]) # pumping in m3 per day
+        SACM_array = np.loadtxt(Path('input') / 'wells' / 'PUMP_S.csv',delimiter=',', skiprows=1, usecols=[1,2,7,8,11,15]) # pumping in m3 per day
         WEL_DICT, WEL_INFO = self.addNewWells(SACM_array, LYR=1, WEL_Dict=WEL_DICT, INFO_Dict=WEL_INFO, pumpwell=True)
         
         REPDA_array = np.loadtxt(Path('input') / 'wells' / 'PUMP_RC_Q.csv', delimiter=',', skiprows=1, usecols=[1,2,4,5,11,15]) # pumping in m3 per day
-        total_urban_repda = REPDA_array[REPDA_array[:,5]==1,4].sum() * -1 # Pumping sum is negative
-        total_periurban_repda = REPDA_array[REPDA_array[:,5]==0,4].sum() * -1 # Pumping sum is negative
-        
+        self.r_multiplier = np.loadtxt(Path('input') / 'wells' / 'R_MULT.csv', delimiter=',', skiprows=1, usecols=[0]) # REPDA multiplier to ensure that total REPDA pumping is equal to the unknown pumping calibrated according to JoH
+
         # Include only municipalities with urban land cover
         mun = np.unique(self.mun)[1:].copy()
         
@@ -375,28 +369,27 @@ class model():
         for i, l in enumerate(LU_PAR):
             # Calculate unaccounted for water supply by subtraction to determine pumping in REPDA dataset
             total_mthly_pumping = max(0, self.twateruse[i] - i_other[i]) # Monthly pumping is equal to the total water use minus other supply (m3/d)
-            self.total_mthly_pumping = self.total_mthly_pumping.append(total_mthly_pumping)
-            
-            LEAK_array = np.zeros((LU[l]['LIST']['URBAN'].shape[0] * (PHASE_PER[i + 1] - PHASE_PER[i]),5))
-            j = 0
+            self.total_mthly_pumping.append(total_mthly_pumping)
             
             # Generate monthly pumping datasets for REPDA data in single pumping value format
             # Loop through monthly periods in each model phase
             for p in range(S_per[i]+1,E_per[i]+1):
+                        
+                # Urban wells
+                WEL_DICT, WEL_INFO = self.addNewWells(New_WEL=REPDA_array[REPDA_array[:,5]==1,:5], LYR=1, WEL_Dict=WEL_DICT, INFO_Dict=WEL_INFO, WEL_mult=self.params['Q'][i]*self.r_multiplier[p-1], start=p, end=(p + 1), pumpwell=True)
                 
-                if total_mthly_pumping>0:
-                    unknown_pumping = total_mthly_pumping - (-1 * np.sum(list(zip(*WEL_INFO[p-1]))[3])) # Unknown pumping is the total monthly pumping for each model period minus the known pumping from SACM and CAEM (which are negative)
-                    self.unknown_pumping = self.unknown_pumping.append(unknown_pumping)
-                    
-                    # Urban wells
-                    WEL_DICT, WEL_INFO = self.addNewWells(New_WEL=REPDA_array[REPDA_array[:,5]==1,:5], LYR=1, WEL_Dict=WEL_DICT, INFO_Dict=WEL_INFO, WEL_mult=self.params['Q'][i], start=p, end=(p + 1), pumpwell=True)                
-                    
-                    p_multiplier = (unknown_pumping - total_urban_repda*self.params['Q'][i])/total_periurban_repda # Determine the monthly multiplier by dividing the estimated unknown pumping by the total pumping in the REPDA dataset
-                    self.p_multiplier = self.p_multiplier.append(p_multiplier)
-                    
-                    # Peri-urban wells
-                    WEL_DICT, WEL_INFO = self.addNewWells(New_WEL=REPDA_array[REPDA_array[:,5]==0,:5], LYR=1, WEL_Dict=WEL_DICT, INFO_Dict=WEL_INFO, WEL_mult=p_multiplier, start=p, end=(p + 1), pumpwell=True)
-
+                # Peri-urban wells
+                WEL_DICT, WEL_INFO = self.addNewWells(New_WEL=REPDA_array[REPDA_array[:,5]==0,:5], LYR=1, WEL_Dict=WEL_DICT, INFO_Dict=WEL_INFO, WEL_mult=self.r_multiplier[p-1], start=p, end=(p + 1), pumpwell=True)
+        
+        # Loop through model phases
+        for i, l in enumerate(LU_PAR):
+            leaks[:,i+1] = self.params['LK'][i]*LEAK_MUN[:,1]*(total_water_use[:,i]-alt_pumping_reduction[i]) # Total leak per municipality by model phase (m3/d)☻
+            
+            LEAK_array = np.zeros((LU[l]['LIST']['URBAN'].shape[0] * (PHASE_PER[i + 1] - PHASE_PER[i]),5))
+            j = 0
+            
+            # Loop through monthly periods in each model phase
+            for p in range(S_per[i]+1,E_per[i]+1):
                 '''
                 Leak Repair
                 
@@ -410,7 +403,7 @@ class model():
                 conductivity does not allow for high levels of infiltration and the sewer
                 provides a preferential flow path out of the basin
                 '''
-                
+            
                 for n, m in enumerate(mun):
                     # Create an array for all urban model cells in this municipality
                     tempLeak = LU[l]['LIST']['URBAN'][(LU[l]['LIST']['URBAN'][:,4]==m),:4]
@@ -442,7 +435,7 @@ class model():
                         j += tempLeak.shape[0]
           
             WEL_DICT, WEL_INFO = self.addNewWells(LEAK_array, LYR=1, WEL_Dict=WEL_DICT, INFO_Dict=WEL_INFO, WEL_mult=self.params['LK'][i], coordType='rc')
-        
+
         total_mthly_leak = np.zeros(PHASE_PER[3])
         for i in range(total_mthly_leak.shape[0]):
             total_mthly_leak[i] = np.sum(list(zip(*WEL_INFO[i]))[3])
@@ -450,50 +443,50 @@ class model():
         
         wel = flopy.modflow.ModflowWel(mf, stress_period_data=WEL_DICT, options=['NOPRINT'])
             
-#        if verbose: print('WEL_Dict generated in', str(time.time() - newtime), 'seconds')
-##        
-##        ## Create pickle file of Well Data to be available for post processing of well energy use objective
-##        winfofile = r'model_files\optimization_data\objectives\WEL_INFO_' + self.name + '.pickle'
-##        with open(winfofile, 'wb') as handle:
-##            pickle.dump(WEL_INFO, handle, protocol=pickle.HIGHEST_PROTOCOL)
-##        print('WEL_Dict saved in',str(time.time()-newtime),'seconds')
+        if verbose: print('WEL_Dict generated in', str(time.time() - newtime), 'seconds')
 #        
-#        # Generate output control and solver MODFLOW packages 
-#        oc, pcg = self.outputControl(mf)
-#        
-#        if incl_obs:
-#            mf.add_existing_package(str(Path.cwd().joinpath('modflow').joinpath('OBS.ob_hob')),ptype='HOB', copy_to_model_ws=False)
-#            mf.add_output(str(Path.cwd().joinpath('modflow').joinpath(self.name + '.hob.out')),unit=2001)
-#            
-##        hob = flopy.modflow.ModflowHob.load(r'modflow\OBS.ob_hob', mf)
-##        winfofile = r'modflow\OBS.pickle'
-##        import pickle
-##        with open(winfofile, 'wb') as handle:
-##            pickle.dump(hob.obs_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
-##    
-#        # Run Model and post processing
-#        ## Write the MODFLOW model input files
-#        if verbose:
-#            print('Data processed in', str(time.time() - timestart), 'seconds')
-#        
-#            newtime = time.time()
-#            print('Writing input file...')
-#            
-#        mf.write_input()
-#        
-#        if verbose:
-#            print('Input file written in', str(time.time() - newtime), 'seconds')
-#            
-#            newtime = time.time()
-#            print('Running MODFLOW model...')
-#            
-#        # Run the MODFLOW model
-#        success, buff = mf.run_model(silent=not verbose)
-#        
-#        if verbose:
-#            print('MODFLOW model completed run in', str(time.time() - newtime), 'seconds')
-#        
-#            print('Wrapper completed run in', str(time.time() - timestart), 'seconds')
+#        ## Create pickle file of Well Data to be available for post processing of well energy use objective
+#        winfofile = r'model_files\optimization_data\objectives\WEL_INFO_' + self.name + '.pickle'
+#        with open(winfofile, 'wb') as handle:
+#            pickle.dump(WEL_INFO, handle, protocol=pickle.HIGHEST_PROTOCOL)
+#        print('WEL_Dict saved in',str(time.time()-newtime),'seconds')
+        
+        # Generate output control and solver MODFLOW packages 
+        oc, pcg = self.outputControl(mf)
+        
+        if incl_obs:
+            mf.add_existing_package(str(Path.cwd().joinpath('modflow').joinpath('OBS_JH.ob_hob')),ptype='HOB', copy_to_model_ws=False)
+            mf.add_output(str(Path.cwd().joinpath('modflow').joinpath(self.name + '.hob.out')),unit=2001)
+            
+#        hob = flopy.modflow.ModflowHob.load(r'modflow\OBS.ob_hob', mf)
+#        winfofile = r'modflow\OBS.pickle'
+#        import pickle
+#        with open(winfofile, 'wb') as handle:
+#            pickle.dump(hob.obs_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+#    
+        # Run Model and post processing
+        ## Write the MODFLOW model input files
+        if verbose:
+            print('Data processed in', str(time.time() - timestart), 'seconds')
+        
+            newtime = time.time()
+            print('Writing input file...')
+            
+        mf.write_input()
+        
+        if verbose:
+            print('Input file written in', str(time.time() - newtime), 'seconds')
+            
+            newtime = time.time()
+            print('Running MODFLOW model...')
+            
+        # Run the MODFLOW model
+        success, buff = mf.run_model(silent=not verbose)
+        
+        if verbose:
+            print('MODFLOW model completed run in', str(time.time() - newtime), 'seconds')
+        
+            print('Wrapper completed run in', str(time.time() - timestart), 'seconds')
         
         self.mthlyleak = total_mthly_leak
         self.wells = WEL_INFO
