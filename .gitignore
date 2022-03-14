@@ -14,4 +14,4 @@
 *.svg
 *.pickle
 RunModflow.Bat
-output\*
+output/*
