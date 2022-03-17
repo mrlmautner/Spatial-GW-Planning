@@ -15,3 +15,4 @@
 *.pickle
 RunModflow.Bat
 output/*
+modflow/*

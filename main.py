@@ -23,25 +23,15 @@ exefile = r'C:\WRDAPP\MF2005.1_12\bin\mf2005.exe'
 # Load alternatives
 altpath = Path.cwd() / 'input' / 'decisions' / 'alternatives.csv'
 alternatives = {}
-altkeys = ['names','wwtps','basins','leakrepair','labels']
+altkeys = ['names','c1','c2','c3','c4','p1','p2','p3','labels']
 with open(altpath) as a:
     lines = a.read().splitlines() 
     for i, line in enumerate(lines):
         templist = line.split(',')
         alternatives[altkeys[i]] = templist
 
-sarun = 3
-safolder = '20220311'
-#error, objectives, objectives_subregion, heads, sa_model = mf.SA_mode(alternatives=alternatives, exefile=exefile, safolder=safolder, sarun=sarun, soswrlim=soswrlim, verbose=True)
-model, sa_loc, error = mf.single_run(model_name='test', exefile=exefile, safolder=safolder, sarun=sarun, error_calc=True, verbose=True)
+sarun = 1
+safolder = '20220316'
+#model, sa_loc, error = mf.single_run(model_name=alternatives['names'][0], exefile=exefile, safolder=safolder, sarun=sarun, error_calc=True, verbose=True)
+model_error, objectives, objectives_subregion, model_dict = mf.run_alternatives(alternatives, exefile, safolder, sarun=sarun, verbose=True)
 #objectives, objectives_subregion, heads = mf.process_objectives(model_name=model.name, safolder=safolder, model=model, sa_loc=sa_loc, sarun=sarun, verbose=True)
-#objectives, objectives_subregion, heads = mf.process_3objectives(model_name=model.name, safolder=safolder, model=model, sa_loc=sa_loc, sarun=sarun, verbose=True)
-
-### Assign supply source quantities
-#cutz = np.loadtxt(Path.cwd() / 'input' / 'decisions' / 'new_cutz.csv', delimiter=',', skiprows=1, usecols=(1,2,3)) # Imports from Cutzamala reservoir system
-#lerm = np.loadtxt(Path.cwd() / 'input' / 'decisions' / 'new_lerm.csv', delimiter=',', skiprows=1, usecols=(1,2,3)) # Imports from Lerma groundwater system
-#pai = np.loadtxt(Path.cwd() / 'input' / 'decisions' / 'new_pai.csv', delimiter=',', skiprows=1, usecols=(1,2,3)) # Imports from PAI groundwater system external to the model
-#int_sw = np.loadtxt(Path.cwd() / 'input' / 'decisions' / 'new_int_sw.csv', delimiter=',', skiprows=1, usecols=(1,2,3)) # Surface water sources within the basin
-#int_ww = np.loadtxt(Path.cwd() / 'input' / 'decisions' / 'new_int_ww.csv', delimiter=',', skiprows=1, usecols=(1,2,3)) # Wastewater reuse within the basin
-#new_other = cutz + lerm + pai + int_sw + int_ww # Total of all other water supplies except local groundwater (m3/s)
-#new_other = new_other.sum(axis=0) # Total of all other supplies (m3/s)

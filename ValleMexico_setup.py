@@ -15,7 +15,7 @@ from pathlib import Path
 class model():
 
     # Initializer / Instance attributes
-    def __init__(self, name, exe_file=str(Path('C:') / 'WRDAPP' / 'MF2005.1_12' / 'bin' / 'mf2005.exe'), modlims=[455000, 2107000, 539000, 2175000], cellsize=500, strt_yr=1984, end_yr=2014, ACTIVE=[Path.cwd() / 'input' / 'ACTIVE_VM_LYR1.asc', Path.cwd() / 'input' / 'ACTIVE_VM_LYR2.asc'], THICKNESS=[Path.cwd() / 'input' / 'THICK1_VM.asc', Path.cwd() / 'input' / 'THICK2_VM.asc'], GEO=[Path.cwd() / 'input' / 'GEO_VM_LYR1.asc', Path.cwd() / 'input' / 'GEO_VM_LYR2.asc'], DEM=Path.cwd() / 'input' / 'DEM_VM.asc', IH=Path.cwd() / 'input' / 'IH_1984_LT2750.asc', SUBR=Path.cwd() / 'input' / 'CLUSTER_ED_VM.asc', MUN=Path.cwd() / 'input' / 'MUN_VM.asc', PAR=Path.cwd() / 'modflow' / 'params.pval', sarun=0):
+    def __init__(self, name, exe_file=str(Path('C:') / 'WRDAPP' / 'MF2005.1_12' / 'bin' / 'mf2005.exe'), modlims=[455000, 2107000, 539000, 2175000], cellsize=500, strt_yr=1984, end_yr=2014, ACTIVE=[Path.cwd() / 'input' / 'ACTIVE_VM_LYR1.asc', Path.cwd() / 'input' / 'ACTIVE_VM_LYR2.asc'], THICKNESS=[Path.cwd() / 'input' / 'THICK1_VM.asc', Path.cwd() / 'input' / 'THICK2_VM.asc'], GEO=[Path.cwd() / 'input' / 'GEO_VM_LYR1.asc', Path.cwd() / 'input' / 'GEO_VM_LYR2.asc'], DEM=Path.cwd() / 'input' / 'DEM_VM.asc', IH=Path.cwd() / 'input' / 'IH_1984_LT2750.asc', SUBR=Path.cwd() / 'input' / 'AGEB_VM.asc', MUN=Path.cwd() / 'input' / 'MUN_VM.asc', PAR=Path.cwd() / 'modflow' / 'params.pval', sarun=0):
         self.name = name # Assign name
         self.xll = modlims[0] # X coordinate of the lower left corner
         self.yll = modlims[1] # Y coordinate of the lower left corner
@@ -118,12 +118,12 @@ class model():
             
         layvka = [1]*self.nlay # Indicates that VANI represents the ratio of H:V hydraulic conductivity
         
-        lpf = flopy.modflow.mflpf.ModflowLpf(mf, ipakcb=9, laytyp=[1,1], layvka=layvka, hk=geoarrays['HK'], vka=geoarrays['VANI'], ss=geoarrays['SS'], sy=geoarrays['SY'], laywet=[1,1])
-#        lpf = flopy.modflow.mflpf.ModflowLpf(mf, ipakcb=9, laytyp=[0,0], layvka=layvka, hk=geoarrays['HK'], vka=geoarrays['VANI'], ss=geoarrays['SS'], sy=geoarrays['SY'])
+        lpf = flopy.modflow.mflpf.ModflowLpf(mf, ipakcb=9, laytyp=[1,1], layvka=layvka, hk=geoarrays['HK'], vka=geoarrays['VANI'], ss=geoarrays['SS'], sy=geoarrays['SY'], laywet=[1,1]) # Wetting, convertible both layers
+#        lpf = flopy.modflow.mflpf.ModflowLpf(mf, ipakcb=9, laytyp=[0,0], layvka=layvka, hk=geoarrays['HK'], vka=geoarrays['VANI'], ss=geoarrays['SS'], sy=geoarrays['SY']) # No wetting, confined both layers
         
         return mf, dis, bas, lpf
     
-    def addNewWells(self, New_WEL, LYR, WEL_Dict=0, INFO_Dict=0, WEL_mult=1, start=0, end=0, dateType='per', coordType='xy', pumpwell=False, changepumping=False, altpump_cluster=[]):
+    def addNewWells(self, New_WEL, LYR, WEL_Dict=0, INFO_Dict=0, WEL_mult=1, start=0, end=0, dateType='per', coordType='xy', pumpwell=False, changepumping=False):
         '''
         New_WEL is an np array of the following format: X (or C), Y (or R), Start Year, End Year, Flow (m3/d)
         WEL_mult is a scalar multiplier to be applied to all wells in the data set New_WEL
@@ -171,8 +171,8 @@ class model():
                     
             # Reduce the pumping amount by a percentage by cluster
             if changepumping:
-                ##FINISH##
-                P = float(self.altpump[np.where(self.altpump==altpump_cluster[w])[0],1]) # the ratio of new pumping to old pumping
+                wellcluster = New_WEL[w,5]
+                P = float(self.altpump[np.where(self.altpump[:,0]==wellcluster)[0],1]) # the ratio of new pumping to old pumping
             else:
                 P = 1
                     
@@ -269,6 +269,8 @@ class model():
         # Model internal variables
         sec2day = 60*60*24 # Second to day conversion
         
+        self.altpump = alt_pumping
+        
         # Water supply data
         hist_water_use = np.loadtxt(Path.cwd() / 'input' / 'decisions' / 'twu.csv', delimiter=',', skiprows=1, usecols=(1,2,3)) # Initial (original) all other supplies before alternatives, matrix of size municipalities by phases (m3/s)
         total_water_use = hist_water_use*self.params['TWU']*sec2day # Multiply by total water use parameters (m3/d)
@@ -354,10 +356,10 @@ class model():
         # Add supply wells
         # Import CONAGUA and SACM pumping datasets
         CAEM_array = np.loadtxt(Path('input') / 'wells' / 'PUMP_C.csv', delimiter=',', skiprows=1, usecols=[1,2,7,8,11,15]) # pumping in m3 per day
-        WEL_DICT, WEL_INFO = self.addNewWells(CAEM_array, LYR=1, WEL_Dict=WEL_DICT, INFO_Dict=WEL_INFO, pumpwell=True)
+        WEL_DICT, WEL_INFO = self.addNewWells(CAEM_array, LYR=1, WEL_Dict=WEL_DICT, INFO_Dict=WEL_INFO, pumpwell=True, changepumping=True)
             
         SACM_array = np.loadtxt(Path('input') / 'wells' / 'PUMP_S.csv',delimiter=',', skiprows=1, usecols=[1,2,7,8,11,15]) # pumping in m3 per day
-        WEL_DICT, WEL_INFO = self.addNewWells(SACM_array, LYR=1, WEL_Dict=WEL_DICT, INFO_Dict=WEL_INFO, pumpwell=True)
+        WEL_DICT, WEL_INFO = self.addNewWells(SACM_array, LYR=1, WEL_Dict=WEL_DICT, INFO_Dict=WEL_INFO, pumpwell=True, changepumping=True)
         
         REPDA_array = np.loadtxt(Path('input') / 'wells' / 'PUMP_RC_Q.csv', delimiter=',', skiprows=1, usecols=[1,2,4,5,11,15]) # pumping in m3 per day
         self.r_multiplier = np.loadtxt(Path('input') / 'wells' / 'R_MULT.csv', delimiter=',', skiprows=1, usecols=[0]) # REPDA multiplier to ensure that total REPDA pumping is equal to the unknown pumping calibrated according to JoH

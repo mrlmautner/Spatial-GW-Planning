@@ -175,7 +175,7 @@ def measureMound(heads,dem,active,LU,subregion_array,subregion_list,PhasePer):
         
     return mound_per, mound_per_subregion, hmatrix
 
-def get_3objectives(heads, wellinfo, landuse, dem, active, bottom, subregion_array):
+def get_oldobjectives(heads, wellinfo, landuse, dem, active, bottom, subregion_array):
     
     subregion_list = np.unique(np.unique(subregion_array)) #List of subregions
 #    subregion_list = subregion_list[subregion_list>0]
@@ -200,7 +200,7 @@ def get_3objectives(heads, wellinfo, landuse, dem, active, bottom, subregion_arr
 
     return energy, energy_subregion, wq_cells, wq_cells_subregion, mound_per, mound_per_subregion
 
-def get_2objectives(heads, wellinfo, landuse, dem, active, bottom, subregion_array):
+def get_newobjectives(heads, wellinfo, landuse, dem, active, bottom, subregion_array):
     
     subregion_list = np.unique(np.unique(subregion_array)) #List of subregions
 #    subregion_list = subregion_list[subregion_list>0]
@@ -209,13 +209,17 @@ def get_2objectives(heads, wellinfo, landuse, dem, active, bottom, subregion_arr
     try:
         a, a_subregion = measureAvailability(wellinfo,subregion_array,subregion_list)
     except:
-        a, a_subregion = np.nan, np.ones(subregions)*np.nan, np.nan
+        a, a_subregion = np.nan, np.ones(subregions)*np.nan
+    try:
+        wq_cells, wq_cells_subregion, hwq = measureWaterQuality(heads, dem, active, bottom, subregion_array, subregion_list)
+    except:
+        wq_cells, wq_cells_subregion, hwq = np.nan, np.ones(subregions)*np.nan, np.nan
     try:
         mound_per, mound_per_subregion, h = measureMound(heads, dem, active, landuse, subregion_array, subregion_list, [132,252])
     except:
         mound_per, mound_per_subregion, h = np.nan, np.ones(subregions)*np.nan, np.nan
 
-    return a, a_subregion, mound_per, mound_per_subregion
+    return a, a_subregion, wq_cells, wq_cells_subregion, mound_per, mound_per_subregion
 
 def calculate_SOSWR(heads, stats):
     '''
