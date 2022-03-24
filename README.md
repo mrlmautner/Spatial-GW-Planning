@@ -3,8 +3,8 @@
 Run | Name | N | Avg grid cells | Median grid cells
 ----- | ------ | ------ | ---------------- | -------------------
 0 | MUN_CLUSTER-CLIP | 41 | 188 | 135
-1 | AGEB | 3307 | 2.3 | 1
-2 | CLUSTER | 200 | 38.5 | 32
+1 | CLUSTER | 200 | 38.5 | 32
+2 | AGEB | 3307 | 2.3 | 1
 
 OLD
 This repository takes raster and csv input data for a groundwater model of the Valley of Mexico and runs a simulation model to compare or optimize recharge alternatives under multiple objectives. The portfolio of intervention options includes repairs to the distribution network to reduce leaks, increased wastewater treatment and infiltration, and increased infiltration of imported water using recharge basins. These policies can be optimized using the NSGAII MOEA according to four objectives: minimize energy use for pumping, maximize hydraulic head in high subsidence regions, minimize groundwater mounding in urban areas, and minimize the cost of the interventions.

@@ -40,7 +40,8 @@ def measureEnergy(heads,supply_dict,dem,bottom,subregion_list):
                     pumping = n[3] * (-1) * 0.001 # m3/d --> ML/d
                     E += (efficiency * depthtowater * pumping * MJc / kWhc)*d # kWh per month (stress period) of pumping
                     
-                    current_subregion = int(np.where(subregion_list == n[4])[0])
+                    if n[4] > 0:
+                        current_subregion = int(np.where(subregion_list == n[4])[0])
                     E_subregion[current_subregion] += (efficiency * depthtowater * pumping * MJc / kWhc)*d # kWh per month (stress period) of pumping
     
     return E, E_subregion
@@ -83,8 +84,6 @@ def measureWaterQuality(heads,dem,active,bottom,subregion_array,subregion_list):
 
 ## NEW
 def measureAvailability(supply_dict,subregion_array,subregion_list):
-    subregion_array = np.loadtxt(Path.cwd() / 'input' / 'CLUSTER_ED_VM.asc',skiprows=6)
-    
     # Load population information
     modelGridIndicators = np.loadtxt(Path.cwd() / 'input' / 'socialindicators' / 'INDICATORS-WTD-BY-POP_GRID_2010.csv', delimiter=',', skiprows=1, usecols=[0,1,2,7])
     modelGridIndicators[:,1] = np.array([int(yi) for yi in modelGridIndicators[:,1] - 1]) # zero-index model grid column
@@ -107,18 +106,52 @@ def measureAvailability(supply_dict,subregion_array,subregion_list):
                 if n[3] < 0:
                     pumping = n[3] * (-1) * d # m3/month
                     modelGridIndicators[np.where((abs(modelGridIndicators[:,1]-n[1])<=10) & (abs(modelGridIndicators[:,2]-n[2])<=10)),5] += pumping
-    
+                    
     modelGridIndicators = np.c_[ modelGridIndicators, np.zeros((modelGridIndicators.shape[0],1)) ] # add a column that holds cummulative pumping divided by population within 10 grid cells array
     modelGridIndicators[:,6] = modelGridIndicators[:,5] / modelGridIndicators[:,4]
     
-    A_subregion = np.zeros(subregion_list.shape[0]) # initialize subregion population list
-    for s in subregion_list:
-         A_subregion_temp = modelGridIndicators[np.where(modelGridIndicators[:,0] == int(s)), 6]
-         A_subregion[int(s)] = np.nanmean(A_subregion_temp)
+    A = np.nanmean(modelGridIndicators[:,6])
     
-    A = np.nanmean(A_subregion)
+    A_subregion = np.zeros(subregion_list.shape[0]) # initialize subregion population list
+    for s, subregion in enumerate(subregion_list):
+         A_subregion_temp = modelGridIndicators[np.where(modelGridIndicators[:,0] == subregion), 6]
+         A_subregion[s] = np.nanmean(A_subregion_temp)
     
     return A, A_subregion
+
+def measurAvgDtoGW(heads,dem,active,bottom,subregion_array,subregion_list):
+    dem = np.multiply(active[1],dem) # DEM only for active cells
+    
+    cells_active = np.sum(active[1]) # Number of cells in active area
+    cells_active_subregion = np.zeros(subregion_list.shape[0]) # Number of active cells in each subregion
+    for m, current_subregion in enumerate(subregion_list):
+        cells_active_subregion[m] = np.sum(np.multiply(active[1],(subregion_array == current_subregion).astype(float)))
+    
+    d2gw = [np.zeros(12), np.zeros(12)] # depth to groundwater map for each stress period
+    d2gw_subregion = [np.zeros((12, subregion_list.shape[0])), np.zeros((12, subregion_list.shape[0]))]
+    
+    third_last_per = [[24,36],[348,360]]
+    
+    for a in range(2):
+        # loop through third or last year of stress periods
+        for t in range(third_last_per[a][0],third_last_per[a][1]):
+            # check during the last time step of each stress period
+            h2 = np.multiply(active[1],heads.get_data(kstpkper=(8,t),mflay=1)) # heads binary file layer 2 for active area
+            h2[h2==-0] = 0
+            h2 = np.maximum(h2, np.multiply(active[1],bottom[1])) # set minimum head to bottom of layer 2
+            
+            d2gw_temp = dem - h2 # calculate depth to groundwater
+            d2gw_temp = np.multiply(active[1],np.maximum(d2gw_temp, d2gw_temp*0)) # set negative values to 0
+                   
+            for m, current_subregion in enumerate(subregion_list):
+                d2gw_subregion[a][t-third_last_per[a][0],m] = np.sum(np.multiply(d2gw_temp, (subregion_array == current_subregion).astype(float))) / cells_active_subregion[m]
+    
+            d2gw[a][t-third_last_per[a][0]] = np.sum(d2gw_temp) / cells_active # Sum the total depth to groundwater over all cells averaged over total active cells
+    
+    delta_average_d2gw = np.mean(d2gw[1]) - np.mean(d2gw[0])
+    delta_average_d2gw_subregion = np.mean(d2gw_subregion[1], axis=0) - np.mean(d2gw_subregion[0], axis=0)
+            
+    return delta_average_d2gw, delta_average_d2gw_subregion, d2gw, d2gw_subregion
 
 def measureMound(heads,dem,active,LU,subregion_array,subregion_list,PhasePer):
 #    mound = 0 # cumulative head above DEM during model period
@@ -178,7 +211,7 @@ def measureMound(heads,dem,active,LU,subregion_array,subregion_list,PhasePer):
 def get_oldobjectives(heads, wellinfo, landuse, dem, active, bottom, subregion_array):
     
     subregion_list = np.unique(np.unique(subregion_array)) #List of subregions
-#    subregion_list = subregion_list[subregion_list>0]
+    subregion_list = subregion_list[subregion_list>0]
     subregions = subregion_list.shape[0]
     
     try:
@@ -203,7 +236,7 @@ def get_oldobjectives(heads, wellinfo, landuse, dem, active, bottom, subregion_a
 def get_newobjectives(heads, wellinfo, landuse, dem, active, bottom, subregion_array):
     
     subregion_list = np.unique(np.unique(subregion_array)) #List of subregions
-#    subregion_list = subregion_list[subregion_list>0]
+    subregion_list = subregion_list[subregion_list>0]
     subregions = subregion_list.shape[0]
     
     try:

@@ -16,74 +16,76 @@ from pathlib import Path
 import shutil
 #import pickle
 
-def single_run(model_name, exefile, safolder, sarun=0, error_calc=False, verbose=False, alt_p=np.array([[1,1],[2,1],[3,1],[4,1]]), alt_p_red=[0,0,0]):
-    # Create a folder for the sarun parameter set
-    sa_loc = Path.cwd() / 'modflow' / safolder / str(sarun)
+def single_run(model_name, exefile, folder, run=0, error_calc=False, verbose=False, alt_p=np.array([[1,1],[2,1],[3,1],[4,1]]), scale='CLUSTER', alt_p_red=[0,0,0]):
+    # Create a folder for the run parameter set
+    sa_loc = Path.cwd() / 'modflow' / folder / str(run)
     sa_loc.mkdir(parents=True, exist_ok=True)
     
     # Run the simulation model under historical conditions
     hist_time = time.time()
-    model = vm.model(name=str(Path(sa_loc) / model_name), sarun=sarun, exe_file=exefile)
+    model = vm.model(name=str(Path(sa_loc) / model_name), run=run, exe_file=exefile, SUBR=Path.cwd().joinpath('input').joinpath(scale+'_VM.asc'))
     model.run_simulation_model(alt_pumping=alt_p, alt_pumping_reduction=alt_p_red, incl_obs=True, verbose=verbose)
-    print(model_name + ' for model ' + '{:05d}'.format(sarun) + ' completed in: ' + str(time.time() - hist_time) + ' seconds', flush=True)
+    print(model_name + ' for model ' + '{:05d}'.format(run) + ' completed in: ' + str(time.time() - hist_time) + ' seconds', flush=True)
     
     if error_calc:
         # Load head observation information for historical model run
         stats = np.loadtxt(Path.cwd() / 'modflow' / 'OBS_JH_stats.csv',skiprows=1)
-        df = pd.read_fwf(Path.cwd().joinpath('modflow').joinpath(safolder).joinpath(str(sarun)).joinpath(model_name+'.hob.out'),widths=[22,19,22])
+        df = pd.read_fwf(Path.cwd().joinpath('modflow').joinpath(folder).joinpath(str(run)).joinpath(model_name+'.hob.out'),widths=[22,19,22])
         heads_obs = [df.columns.values.tolist()] + df.values.tolist()
         
         soswr, maxerror = mo.calculate_SOSWR(heads_obs, stats)
                 
-        # Move the head observation file into the SA experiment folder (safolder)
-        sa_hob_loc = Path.cwd().joinpath('output').joinpath('spatial').joinpath('hob').joinpath(safolder)
+        # Move the head observation file into the SA experiment folder (folder)
+        sa_hob_loc = Path.cwd().joinpath('output').joinpath('spatial').joinpath('hob').joinpath(folder)
         try:
-            shutil.move(str(sa_loc.joinpath(model_name + '.hob.out')), str(sa_hob_loc.joinpath('{:05d}'.format(sarun) + '.hob_out')))
+            shutil.move(str(sa_loc.joinpath(model_name + '.hob.out')), str(sa_hob_loc.joinpath('{:05d}'.format(run) + '.hob_out')))
         except:
             sa_hob_loc.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(sa_loc.joinpath(model_name + '.hob.out')), str(sa_hob_loc.joinpath('{:05d}'.format(sarun) + '.hob_out')))
+            shutil.move(str(sa_loc.joinpath(model_name + '.hob.out')), str(sa_hob_loc.joinpath('{:05d}'.format(run) + '.hob_out')))
     
         # Save the sum-of-squared, weighted residual error
         error = np.array([soswr, maxerror])
-        hist_err_loc = Path.cwd().joinpath('output').joinpath('spatial').joinpath('err').joinpath(safolder)
+        hist_err_loc = Path.cwd().joinpath('output').joinpath('spatial').joinpath('err').joinpath(folder)
         try:
-            np.savetxt(hist_err_loc.joinpath('{:05d}'.format(sarun) + '.csv'), error, delimiter=',')
+            np.savetxt(hist_err_loc.joinpath('{:05d}'.format(run) + '.csv'), error, delimiter=',')
         except:
             hist_err_loc.mkdir(parents=True, exist_ok=True)
-            np.savetxt(hist_err_loc.joinpath('{:05d}'.format(sarun) + '.csv'), error, delimiter=',')
+            np.savetxt(hist_err_loc.joinpath('{:05d}'.format(run) + '.csv'), error, delimiter=',')
         
         return model, sa_loc, error
     
     else:
         return model, sa_loc, np.nan
     
-def process_objectives(model_name, safolder, model, sa_loc, sarun=0, verbose=False, delfolder=False):        
+def process_objectives(model_name, folder, model, sa_loc, run=0, verbose=False, delfolder=False):        
     
     # Load subregion raster
     subregion_list = np.unique(np.unique(model.subregions)) # List of subregions
-#    subregion_list = subregion_list[subregion_list>0]
+    subregion_list = subregion_list[subregion_list>0]
     subregions = subregion_list.shape[0]
     
     # Calculate objectives
     try:
-        heads = pltvm.get_heads([model_name], sarun)
-        a, a_subregion, mound, mound_subregion = mo.get_newobjectives(heads[model_name], model.wells, model.landuse, model.dem, model.actv, model.botm, model.subregions)
+        heads = pltvm.get_heads([model_name], run)
+        a, a_subregion, wq, wq_subregion, mound, mound_subregion = mo.get_newobjectives(heads[model_name], model.wells, model.landuse, model.dem, model.actv, model.botm, model.subregions)
     except:
-        a, a_subregion, mound, mound_subregion = np.nan, np.ones(subregions)*np.nan, np.nan, np.ones(subregions)*np.nan
+        a, a_subregion, wq, wq_subregion, mound, mound_subregion = np.nan, np.ones(subregions)*np.nan, np.nan, np.ones(subregions)*np.nan
     
     mound = mound*100
+    wq = wq*100
     mound_subregion = [i * 100 for i in mound_subregion]
+    wq_subregion = [i * 100 for i in wq_subregion]
         
-    objectives = [a, mound]
-    hist_obj_loc = Path.cwd().joinpath('output').joinpath('spatial').joinpath('obj').joinpath(safolder)
+    objectives = [a, wq, mound]
+    hist_obj_loc = Path.cwd().joinpath('output').joinpath('spatial').joinpath('obj').joinpath(folder)
     try:
-        np.savetxt(hist_obj_loc.joinpath('{:05d}'.format(sarun) + '.csv'), objectives, delimiter=',')
+        np.savetxt(hist_obj_loc.joinpath('{:05d}'.format(run) + '.csv'), objectives, delimiter=',')
     except:
         hist_obj_loc.mkdir(parents=True, exist_ok=True)
-        np.savetxt(hist_obj_loc.joinpath('{:05d}'.format(sarun) + '.csv'), objectives, delimiter=',')
+        np.savetxt(hist_obj_loc.joinpath('{:05d}'.format(run) + '.csv'), objectives, delimiter=',')
 
-    objectives_subregion = np.array([a_subregion, mound_subregion])
-    hist_subregion_loc = Path.cwd().joinpath('output').joinpath('spatial').joinpath('subregion').joinpath(safolder).joinpath(str(sarun))
+    objectives_subregion = np.array([a_subregion, wq_subregion, mound_subregion])
+    hist_subregion_loc = Path.cwd().joinpath('output').joinpath('spatial').joinpath('subregion').joinpath(folder).joinpath(str(run))
     
     # Save by objective
     for o, objective in enumerate(['A','F']):
@@ -93,6 +95,7 @@ def process_objectives(model_name, safolder, model, sa_loc, sarun=0, verbose=Fal
             hist_subregion_loc.mkdir(parents=True, exist_ok=True)
             np.savetxt(hist_subregion_loc.joinpath(objective + '_subregions.csv'), objectives_subregion[o,:], delimiter=',')
             
+    hist_subregion_loc = hist_subregion_loc.joinpath('regions') 
     # Save by subregion
     for m, current_subregion in enumerate(subregion_list):
         try:
@@ -107,7 +110,7 @@ def process_objectives(model_name, safolder, model, sa_loc, sarun=0, verbose=Fal
     
     return objectives, objectives_subregion, heads
 
-def process_oldobjectives(model_name, safolder, model, sa_loc, sarun=0, verbose=False, delfolder=False):        
+def process_oldobjectives(model_name, folder, model, sa_loc, run=0, verbose=False, delfolder=False):        
     
     # Load subregion raster
     subregion_list = np.unique(np.unique(model.subregions)) # List of subregions
@@ -116,7 +119,7 @@ def process_oldobjectives(model_name, safolder, model, sa_loc, sarun=0, verbose=
     
     # Calculate objectives
     try:
-        heads = pltvm.get_heads([model_name], sarun)
+        heads = pltvm.get_heads([model_name], run)
         energy, energy_subregion, wq, wq_subregion, mound, mound_subregion = mo.get_oldobjectives(heads[model_name], model.wells, model.landuse, model.dem, model.actv, model.botm, model.subregions)
     except:
         energy, energy_subregion, wq, wq_subregion, mound, mound_subregion = np.nan, np.ones(subregions)*np.nan, np.nan, np.ones(subregions)*np.nan
@@ -127,15 +130,15 @@ def process_oldobjectives(model_name, safolder, model, sa_loc, sarun=0, verbose=
     wq_subregion = [i * 100 for i in wq_subregion]
         
     objectives = [energy, wq, mound]
-    hist_obj_loc = Path.cwd().joinpath('output').joinpath('spatial').joinpath('obj').joinpath(safolder)
+    hist_obj_loc = Path.cwd().joinpath('output').joinpath('spatial').joinpath('obj').joinpath(folder)
     try:
-        np.savetxt(hist_obj_loc.joinpath('{:05d}'.format(sarun) + '.csv'), objectives, delimiter=',')
+        np.savetxt(hist_obj_loc.joinpath('{:05d}'.format(run) + '.csv'), objectives, delimiter=',')
     except:
         hist_obj_loc.mkdir(parents=True, exist_ok=True)
-        np.savetxt(hist_obj_loc.joinpath('{:05d}'.format(sarun) + '.csv'), objectives, delimiter=',')
+        np.savetxt(hist_obj_loc.joinpath('{:05d}'.format(run) + '.csv'), objectives, delimiter=',')
 
     objectives_subregion = np.array([energy_subregion, wq_subregion, mound_subregion])
-    hist_subregion_loc = Path.cwd().joinpath('output').joinpath('spatial').joinpath('subregion').joinpath(safolder).joinpath(str(sarun))
+    hist_subregion_loc = Path.cwd().joinpath('output').joinpath('spatial').joinpath('subregion').joinpath(folder).joinpath(str(run))
 
     # Save by objective
     for o, objective in enumerate(['E','W','F']):
@@ -145,13 +148,14 @@ def process_oldobjectives(model_name, safolder, model, sa_loc, sarun=0, verbose=
             hist_subregion_loc.mkdir(parents=True, exist_ok=True)
             np.savetxt(hist_subregion_loc.joinpath(objective + '_subregions.csv'), objectives_subregion[o,:], delimiter=',')
     
+    hist_subregion_loc = hist_subregion_loc.joinpath('regions')
     # Save by region
     for m, current_subregion in enumerate(subregion_list):
         try:
-            np.savetxt(hist_subregion_loc.joinpath('regions').joinpath('{:05.0f}'.format(current_subregion) + '.csv'), objectives_subregion[:,m], delimiter=',')
+            np.savetxt(hist_subregion_loc.joinpath('{:05.0f}'.format(current_subregion) + '.csv'), objectives_subregion[:,m], delimiter=',')
         except:
             hist_subregion_loc.mkdir(parents=True, exist_ok=True)
-            np.savetxt(hist_subregion_loc.joinpath('regions').joinpath('{:05.0f}'.format(current_subregion) + '.csv'), objectives_subregion[:,m], delimiter=',')
+            np.savetxt(hist_subregion_loc.joinpath('{:05.0f}'.format(current_subregion) + '.csv'), objectives_subregion[:,m], delimiter=',')
     
     # Delete the model directory and files for this SA parameter set
     if delfolder:
@@ -159,8 +163,8 @@ def process_oldobjectives(model_name, safolder, model, sa_loc, sarun=0, verbose=
     
     return objectives, objectives_subregion, heads
 
-# Function to run SA: sarun is the index of the set of parameter values to use given a previously generated set of parameter values in SALib, weighted residuals allowed to proceed with an evaluation of the managed aquifer recharge alternatives
-def run_alternatives(alternatives, exefile, safolder, sarun=0, verbose=False):
+# Function to run SA: run is the index of the set of parameter values to use given a previously generated set of parameter values in SALib, weighted residuals allowed to proceed with an evaluation of the managed aquifer recharge alternatives
+def run_alternatives(alternatives, exefile, folder, run=0, verbose=False, scale='CLUSTER'):
     
     num_alts = len(alternatives['names'])
     
@@ -177,7 +181,7 @@ def run_alternatives(alternatives, exefile, safolder, sarun=0, verbose=False):
         error_calc = False
         if name == 'Historical': error_calc = True
         
-        alt_model, sa_loc, error = single_run(model_name=name, exefile=exefile, safolder=safolder, sarun=sarun, error_calc=error_calc, verbose=verbose, alt_p=np.array([[1,alternatives['c1'][i]],[2,alternatives['c2'][i]],[3,alternatives['c3'][i]],[4,alternatives['c4'][i]]], dtype=float), alt_p_red=np.array([alternatives['p1'][i],alternatives['p2'][i],alternatives['p3'][i]], dtype=float))
+        alt_model, sa_loc, error = single_run(model_name=name, exefile=exefile, folder=folder, run=run, error_calc=error_calc, verbose=verbose, alt_p=np.array([[1,alternatives['c1'][i]],[2,alternatives['c2'][i]],[3,alternatives['c3'][i]],[4,alternatives['c4'][i]]], dtype=float), alt_p_red=np.array([alternatives['p1'][i],alternatives['p2'][i],alternatives['p3'][i]], dtype=float), scale=scale)
         
         model_error = np.nan
         if name == 'Historical': model_error = error
@@ -192,10 +196,10 @@ def run_alternatives(alternatives, exefile, safolder, sarun=0, verbose=False):
         # Calculate objective performance
         if verbose: print('Calculating alternative performance under objectives', flush=True)
         
-        heads = pltvm.get_heads([alt_model.name], sarun)
+        heads = pltvm.get_heads([alt_model.name], run)
         a[i], a_subregion[i], wq[i], wq_subregion[i], mound[i], mound_subregion[i] = mo.get_newobjectives(heads[alt_model.name], alt_model.wells, alt_model.landuse, alt_model.dem, alt_model.actv, alt_model.botm, alt_model.subregions)
 #        try:
-#            heads = pltvm.get_heads([alt_model.name], sarun)
+#            heads = pltvm.get_heads([alt_model.name], run)
 #            a[i], a_subregion[i], mound[i], mound_subregion[i] = mo.get_newobjectives(heads[alt_model.name], alt_model.wells, alt_model.landuse, alt_model.dem, alt_model.actv, alt_model.botm, alt_model.subregions)
 #        except:
 #            a[i], a_subregion[i], mound[i], mound_subregion[i] = np.nan, np.ones(subregions)*np.nan, np.nan, np.ones(subregions)*np.nan
@@ -206,15 +210,15 @@ def run_alternatives(alternatives, exefile, safolder, sarun=0, verbose=False):
     wq_subregion = [i * 100 for i in wq_subregion]
         
     objectives = [a, wq, mound]
-    sa_obj_loc = Path.cwd().joinpath('output').joinpath('spatial').joinpath('obj').joinpath(safolder)
+    sa_obj_loc = Path.cwd().joinpath('output').joinpath('spatial').joinpath('obj').joinpath(folder)
     try:
-        np.savetxt(sa_obj_loc.joinpath('{:05d}'.format(sarun) + '.csv'), objectives, delimiter=',')
+        np.savetxt(sa_obj_loc.joinpath('{:05d}'.format(run) + '.csv'), objectives, delimiter=',')
     except:
         sa_obj_loc.mkdir(parents=True, exist_ok=True)
-        np.savetxt(sa_obj_loc.joinpath('{:05d}'.format(sarun) + '.csv'), objectives, delimiter=',')
+        np.savetxt(sa_obj_loc.joinpath('{:05d}'.format(run) + '.csv'), objectives, delimiter=',')
 
     objectives_subregion = np.array([a_subregion, wq_subregion, mound_subregion])
-    sa_subregion_loc = Path.cwd().joinpath('output').joinpath('spatial').joinpath('subregion').joinpath(safolder).joinpath(str(sarun))
+    sa_subregion_loc = Path.cwd().joinpath('output').joinpath('spatial').joinpath('subregion').joinpath(folder).joinpath(str(run))
     
     # Save by objective
     for o, objective in enumerate(['A','W','F']):
@@ -223,24 +227,25 @@ def run_alternatives(alternatives, exefile, safolder, sarun=0, verbose=False):
         except:
             sa_subregion_loc.mkdir(parents=True, exist_ok=True)
             np.savetxt(sa_subregion_loc.joinpath(objective + '_subregions.csv'), objectives_subregion[o,:], delimiter=',')
-            
+    
+    sa_subregion_loc = sa_subregion_loc.joinpath('regions')
     # Save by subregion
     for m, current_subregion in enumerate(subregion_list):
         try:
-            np.savetxt(sa_subregion_loc.joinpath('regions').joinpath('{:05.0f}'.format(current_subregion) + '.csv'), objectives_subregion[:,:,m], delimiter=',')
+            np.savetxt(sa_subregion_loc.joinpath('{:05.0f}'.format(current_subregion) + '.csv'), objectives_subregion[:,:,m], delimiter=',')
         except:
             sa_subregion_loc.mkdir(parents=True, exist_ok=True)
-            np.savetxt(sa_subregion_loc.joinpath('regions').joinpath('{:05.0f}'.format(current_subregion) + '.csv'), objectives_subregion[:,:,m], delimiter=',')
+            np.savetxt(sa_subregion_loc.joinpath('{:05.0f}'.format(current_subregion) + '.csv'), objectives_subregion[:,:,m], delimiter=',')
 
 #    # Save last year of heads
-#    sa_heads_loc = Path.cwd().joinpath('model_files').joinpath('output').joinpath('sa').joinpath('heads').joinpath(safolder)
+#    sa_heads_loc = Path.cwd().joinpath('model_files').joinpath('output').joinpath('sa').joinpath('heads').joinpath(folder)
 #    try:
-#        f = open(sa_heads_loc.joinpath('{:05d}'.format(sarun) + '.pkl'),"wb")
+#        f = open(sa_heads_loc.joinpath('{:05d}'.format(run) + '.pkl'),"wb")
 #        pickle.dump(h,f)
 #        f.close()
 #    except:
 #        sa_heads_loc.mkdir(parents=True, exist_ok=True)
-#        f = open(sa_heads_loc.joinpath('{:05d}'.format(sarun) + '.pkl'),"wb")
+#        f = open(sa_heads_loc.joinpath('{:05d}'.format(run) + '.pkl'),"wb")
 #        pickle.dump(h,f)
 #        f.close()
 

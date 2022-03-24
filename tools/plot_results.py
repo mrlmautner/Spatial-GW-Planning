@@ -6,16 +6,12 @@ Created on Mon Nov 26 14:02:08 2018
 """
 import flopy
 import numpy as np
-import matplotlib
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import pandas as pd
 import seaborn as sns
-import pickle
 import flopy.utils.binaryfile as bf
-from scipy import stats
 from pathlib import Path
-from mpl_toolkits.mplot3d import Axes3D
+import pandas as pd
+import matplotlib as mplt
 
 sns.set(style="white", palette="muted", color_codes=True)
 plt.rcParams['legend.fontsize'] = 20
@@ -38,11 +34,16 @@ END_YEAR = 2014
 ncol = int((xur-xll)/cellsize) # Number of rows
 nrow = int((yur-yll)/cellsize) # Number of columns
 
-## Head Dictionary
-def get_heads(alt_list,safolder=-1):
+indpath = Path.cwd() / 'input' / 'socialindicators'
+plot_loc = Path.cwd() / 'output' / 'plots'
+
+def get_heads(alt_list, folder=-1):
+    '''
+    Generate a dictionary of the piezometric head for each model in list alt_list
+    '''
     S_heads = {}
-    if safolder >= 0: 
-        headpath = Path.cwd().joinpath('modflow').joinpath(str(safolder))
+    if folder >= 0: 
+        headpath = Path.cwd().joinpath('modflow').joinpath(str(folder))
     else:
         headpath = Path.cwd().joinpath('modflow')
     for name in alt_list:
@@ -50,98 +51,166 @@ def get_heads(alt_list,safolder=-1):
 
     return S_heads
 
-def calc_head_change(hds, GEO, ACTIVE, n, m, g_units, lyr):
-    # Get head values at the nth and mth time steps
-    h_i = hds.get_data(mflay=lyr,kstpkper=n)
-    h_e = hds.get_data(mflay=lyr,kstpkper=m)
-    
-## Heads Contour
-def plt_head_change(s_heads, GEO, ACTIVE_LYR1, ACTIVE_LYR2, n=(30,0), m=(30,359), g_units = [2,3,4], lyr = 1):
-    # Create array of heads only for geologic units g_units
-    new_h_i = np.ones(h_i.shape)*np.nan
-    for g in g_units:
-        new_h_i[GEO==g] = h_i[GEO==g]
-    new_h_i[ACTIVE!=1] = np.nan # Set cells outside model area to NaN
-    
-    new_h_e = np.ones(h_e.shape)*np.nan
-    for g in g_units:
-        new_h_e[GEO==g] = h_e[GEO==g]
-    new_h_e[ACTIVE!=1] = np.nan # Set cells outside model area to NaN
+def alt_selection(solutions, alt_short):
+    objs = solutions.copy()
+    objs = objs[:,~np.isnan(objs).any(axis=0)]
 
-    # Find difference between nth and mth time steps
-    head_change = new_h_e - new_h_i
-    return head_change
+    # use a boolean index to keep track of nondominated solns
+    keep = np.zeros(len(alt_short), dtype = bool)
 
-def plt_head_change(alt_list, mapTitles, s_heads, GEO, ACTIVE, n = (8,23), m = (8,359), g_units = [2,3,4,5], lyr = 1):
+    for i in range(len(alt_short)):
+        for j in range(len(alt_short)):
+            a = objs[i]
+            b = objs[j]
+            if np.all(a <= b) & np.any(a < b):
+                keep[i] = True
+                keep[j] = False
+
+    return keep
+
+def nondom_alternatives(folder, run, scale, alt_short, obj_short, ids):
     '''
-    Calculates the raster of the change in head from the nth time step to the
-    mth time step for each model in S_heads. Then plots the difference between
-    the change in head over time in the first model in S_heads and all the
-    other models in S_heads. Plots the heads for the geologic units g_units and
-    in the active area .
+    Non-dominated alternatives by municipality
     '''
-
-    fig, axes = plt.subplots(2, 2, figsize=(7,6.3))
-    mapTitle = ['Historical','Increased WW Reuse','Repair Leaks','Recharge Basins']
-    plt.set_cmap('rainbow_r')
-    axes = axes.flat
-    cbar_ax = fig.add_axes([0.85, 0.15, 0.03, 0.7])
+    # FINISH: save to output
     
-    # Get head values at the nth and mth time steps
-    hds = s_heads[s_heads.keys()[0]]
-    hist_i = hds.get_data(mflay=lyr,kstpkper=n)
-    hist_e = hds.get_data(mflay=lyr,kstpkper=m)
+    obj_dict = {}
+    for o, obj in enumerate(obj_short):
+        obj_loc = Path.cwd().joinpath('output').joinpath('spatial').joinpath('subregion').joinpath(folder).joinpath(str(run))
+        obj_array = np.loadtxt(obj_loc.joinpath(obj+'_subregions.csv'), delimiter=',').T
+        obj_dict[obj] = obj_array
     
-    # Create array of heads only for geologic units g_units
-    new_hist_i = np.ones(hist_i.shape)*np.nan
-    for g in g_units:
-        new_hist_i[GEO==g] = hist_i[GEO==g]
-    new_hist_i[ACTIVE_LYR2!=lyr] = np.nan # Set cells outside model area to NaN
+    nondom_alternative = {}
+    nondom_alt_array = np.ones((ids.shape[0],len(alt_short)))*np.nan
+    for u, units in enumerate(ids):
+        solutions = np.ones((len(alt_short),len(obj_short)))*np.nan
+        for j in range(len(alt_short)):
+            solutions[j,0] = obj_dict[obj_short[0]][u, j]*-1
+            solutions[j,1] = obj_dict[obj_short[1]][u, j]
+            solutions[j,2] = obj_dict[obj_short[2]][u, j]
+        
+        nondom_alternative[int(ids[u])] = alt_selection(solutions, alt_short)
+        nondom_alt_array[u,:] = alt_selection(solutions, alt_short)
     
-    new_hist_e = np.ones(hist_e.shape)*np.nan
-    for g in g_units:
-        new_hist_e[GEO==g] = hist_e[GEO==g]
-    new_hist_e[ACTIVE_LYR2!=lyr] = np.nan # Set cells outside model area to NaN
+    return nondom_alternative, nondom_alt_array
+
+def plot_nondom_heatmap(folder, alt_short, scale_names, obj_short, ind_short, ind_long):
+    '''
     
-    # Find difference between nth and mth time steps
-    hist_change = new_hist_e-new_hist_i
+    '''
+    for s, scale in enumerate(scale_names):
+        plot_loc_scale = plot_loc / 'Alternative Heatmap' / folder / scale
+        plot_loc_scale.mkdir(parents=True, exist_ok=True)
+        
+        ind_array = np.genfromtxt(indpath.joinpath('soc-ind_'+scale+'.csv'), delimiter=',', skip_header=1)
+        nondom_alternative, nondom_alt_array = nondom_alternatives(folder, s, scale, alt_short, obj_short, ind_array[:,0])
+        
+        nondom_heatmap = nondom_alt_array
+        for r, row in enumerate(nondom_heatmap):
+            if row.sum() == 1: nondom_heatmap[r,:] += row
+        
+        nondom_heatmap = pd.DataFrame(nondom_heatmap, columns=alt_short)
+        for i, ind in enumerate(ind_short[1:5]):
+            nondom_heatmap_temp = nondom_heatmap.copy()
+            nondom_heatmap_temp[ind_long[i+5]] = np.round(ind_array[:,i+5]*100, decimals=1)
+            nondom_heatmap_temp = nondom_heatmap_temp.set_index(ind_long[i+5]).sort_index().transpose()
+            
+            fig, ax = plt.subplots(figsize=(25,5))
+            sns.heatmap(nondom_heatmap_temp, cmap="PuBuGn", ax=ax, cbar=False)
+            
+            plt.tight_layout()
+            plt.savefig(plot_loc_scale.joinpath(ind+'.png'), dpi=300)
+            plt.savefig(plot_loc_scale.joinpath(ind+'.svg'))
+            plt.close()
     
-    for i,name in enumerate(alt_list):
-        hds = s_heads[name]
-        h_i = hds.get_data(mflay=1,kstpkper=n)
-        h_e = hds.get_data(mflay=1,kstpkper=m)
+def plt_IndvObj_ind(folder, obj_short, obj_long, obj_label, alt_short, alt_long, ind_short, ind_long, ind_label, scale_names=['MUN_CLUSTER-CLIP', 'CLUSTER', 'AGEB']):
+    '''
+    Given folder, scale_names, and objectives, calculate the change in objective values between each alternative and the historical. Then plot the social indicators (x-axis) vs management objectives (y-axis) as a scatter plot. Each column in the subplot is a different social indicator. There is a folder for each scale and a figure for each objective.
+    '''
+    for s, scale in enumerate(scale_names):
+        
+        plot_loc_scale = plot_loc / 'Indicator vs Objectives' / folder / scale
+        plot_loc_scale.mkdir(parents=True, exist_ok=True)
+        
+        df_ind = pd.read_csv(indpath.joinpath('soc-ind_'+scale+'.csv'), names=ind_short, skiprows=1)
+    
+        for o, obj in enumerate(obj_short):
+            
+            obj_loc = Path.cwd().joinpath('output').joinpath('spatial').joinpath('subregion').joinpath(folder).joinpath(str(s))
+            obj_array = np.loadtxt(obj_loc.joinpath(obj+'_subregions.csv'), delimiter=',').T
+            
+            # Create dataframe with objective values
+            df_obj = pd.DataFrame(data=obj_array, index=np.arange(0,len(obj_array)), columns=alt_short)
+                                
+            fig, axes = plt.subplots(nrows=1, ncols=4, sharey=True, figsize=(20, 6))
+            fig.suptitle('Indicators vs ' + obj_long[o] + ' Objective')
+#            fig.subplots_adjust(left=0.12, top=0.7)
+            
+            for i, ind in enumerate(ind_short[1:5]):
 
-    print('Plotting head changes over model period...')
-    plt.set_cmap('viridis_r')
+                df_deltaHist = pd.DataFrame(df_obj[alt_short[1:]].sub(df_obj[alt_short[0]], axis='index'))
+                df_deltaHist[ind] = df_ind[ind]
+                df_deltah_melt = pd.melt(df_deltaHist, id_vars=[ind], var_name='Alternative', value_name=obj)
+                
+                sns.scatterplot(data=df_deltah_melt, x=ind, y=obj, hue='Alternative', linewidth=0, ax=axes[i], legend=False)
+                
+#                axes[a,i].set_ylim(bottom=yllim[o], top=yulim[o])
+                axes[i].set_ylabel('')
+                axes[i].set_title(ind_long[i+1])
+                axes[i].set_xlabel(ind_label[i])
+                    
+                if i == 0:
+                    axes[i].set_ylabel(obj_label[o])
+                    
+            plt.legend(bbox_to_anchor=(1.25, 1), borderaxespad=0)
+            plt.savefig(plot_loc_scale.joinpath(obj+'.png'), dpi=600)
+            plt.savefig(plot_loc_scale.joinpath(obj+'.svg'))
+            plt.close()
 
-    # Get head values at the nth and mth time steps
-    first_heads = s_heads[list(s_heads.keys())[0]]
+def plt_IndvObj_scale(folder, obj_short, obj_long, obj_label, alt_short, alt_long, ind_short, ind_long, ind_label, scale_names=['MUN_CLUSTER-CLIP', 'CLUSTER', 'AGEB'], scale_label=['Municipality\n(n = 42)\nMedian unit size: 135', 'Cluster\n(n = 200)\nMedian unit size: 32', 'Census Block\n(n = 3307)\nMedian unit size: 1']):
+    '''
+    Given folder, scale_names, and objectives, calculate the change in objective values between each alternative and the historical. Then plot the social indicators (x-axis) vs management objectives (y-axis) as a scatter plot. Each column in the subplot is a different social indicator. There is a folder for each scale and a figure for each objective.
+    '''
+    for i, ind in enumerate(ind_short[1:5]):
+        
+        plot_loc_ind = plot_loc / 'Indicator vs Objectives' / folder / ind
+        plot_loc_ind.mkdir(parents=True, exist_ok=True)
+    
+        for o, obj in enumerate(obj_short):
+            
+            fig, axes = plt.subplots(nrows=1, ncols=3, sharey=True, figsize=(20, 6))
+            fig.suptitle('Indicators vs ' + obj_long[o] + ' Objective')
+            fig.subplots_adjust(left=0.12, top=0.7)
+            
+            for s, scale in enumerate(scale_names):
+                
+                df_ind = pd.read_csv(indpath.joinpath('soc-ind_'+scale+'.csv'), names=ind_short, skiprows=1)
 
-    first_change = calc_head_change(first_heads, GEO, ACTIVE, n, m, g_units, lyr)
-
-    for i, name in enumerate(alt_list):
-        alt_heads = s_heads[name]
-
-        alt_change = calc_head_change(alt_heads, GEO, ACTIVE, n, m, g_units, lyr)
-
-        change_compare = alt_change - first_change
-
-        fig, axes = plt.subplots()
-        cbar_ax = fig.add_axes()
-
-        im = axes.imshow(change_compare,vmin=0,vmax=20)
-        CS = axes.contour(ACTIVE, colors='k', linewidths=2)
-
-        axes.xaxis.set_visible(False)
-        axes.yaxis.set_visible(False)
-        axes.set_title(mapTitles[i].format(i+1))
-
-        fig.colorbar(im, cax=cbar_ax, label='Change in Groundwater Head (m)')
-
-        plt.savefig(Path.cwd().joinpath('output').joinpath('plots').joinpath('head-change_'+name+'-'+alt_list[0]+'.eps'), dpi=600)
-        plt.savefig(Path.cwd().joinpath('output').joinpath('plots').joinpath('head-change_'+name+'-'+alt_list[0]+'.png'), dpi=600)
-        plt.close()
-
+                obj_loc = Path.cwd().joinpath('output').joinpath('spatial').joinpath('subregion').joinpath(folder).joinpath(str(s))
+                obj_array = np.loadtxt(obj_loc.joinpath(obj+'_subregions.csv'), delimiter=',').T
+                
+                # Create dataframe with objective values
+                df_obj = pd.DataFrame(data=obj_array, index=np.arange(0,len(obj_array)), columns=alt_short)
+                                    
+                df_deltaHist = pd.DataFrame(df_obj[alt_short[1:]].sub(df_obj[alt_short[0]], axis='index'))
+                df_deltaHist[ind] = df_ind[ind]
+                df_deltah_melt = pd.melt(df_deltaHist, id_vars=[ind], var_name='Alternative', value_name=obj)
+                
+                sns.scatterplot(data=df_deltah_melt, x=ind, y=obj, hue='Alternative', linewidth=0, ax=axes[s], legend=False)
+                
+#                axes[a,i].set_ylim(bottom=yllim[o], top=yulim[o])
+                axes[s].set_ylabel('')
+                axes[s].set_title(scale_label[s])
+                axes[s].set_xlabel(ind_label[i])
+                    
+                if i == 0:
+                    axes[s].set_ylabel(obj_label[o])
+            
+            plt.legend(bbox_to_anchor=(1.25, 1), borderaxespad=0)
+            plt.savefig(plot_loc_ind.joinpath(obj+'.png'), dpi=600)
+            plt.savefig(plot_loc_ind.joinpath(obj+'.svg'))
+            plt.close()
+            
 def plt_alt_objectives(alt_names, num_alt, objectives):
     '''
     objectives is a list with an array of length number of alternatives for each objective
@@ -254,65 +323,7 @@ def plt_cum_sum(filename, alt_list, mapTitles, df_CumSum, start='01-31-1985', en
     
     plt.show()
 
-def process_hobs(folder, name, legend=['Lacustrine','Alluvial','Basalt','Volcaniclastic','Andesite'], obsinfo_loaded=True):
-    '''
-    Imports head observations from .hob.out file which gives simulated and observed head values
-    '''
-    obsstats = pd.read_csv(Path.cwd() / 'modflow' / 'OBS_stats.csv')
-    obsformation = pd.read_csv(Path.cwd() / 'data_raw' / 'obs_formation.csv')
-    df = pd.read_fwf(Path.cwd().joinpath('output').joinpath('sa').joinpath('hob').joinpath(folder).joinpath(name+'.hob_out'),widths=[22,19,22])
-    df.columns = ['simulated','observed','obs_name']
-    df['LAT'] = np.nan
-    df['LON'] = np.nan
-    df['time_series'] = np.nan
-    df['obs_id'] = np.nan
-    df['stat'] = obsstats
-    df['formation'] = np.nan
-    df['abssimulated'] = np.nan
-    df['absobserved'] = np.nan
-    df['abssimulated1'] = np.nan
-    df['absobserved1'] = np.nan
-    
-    if obsinfo_loaded:
-        print('Opening observation input file...')
-        with open(str(Path.cwd() / 'modflow' / 'OBS.pickle'), 'rb') as handle:
-            obsinfo = pickle.load(handle)
-    else:
-        print('Processing observation input file...')
-        mf = flopy.modflow.Modflow.load(str(Path.cwd().joinpath('modflow').joinpath('Historical.nam')))
-        hob = flopy.modflow.ModflowHob.load(str(Path.cwd() / 'modflow' / 'OBS.ob_hob'), mf)
-        winfofile = str(Path.cwd() / 'modflow' / 'OBS.pickle')
-        with open(winfofile, 'wb') as handle:
-            pickle.dump(hob.obs_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
-        obsinfo = hob.obs_data
-    
-    for i in obsinfo:
-        oname = i.obsname
-        
-        t = np.ones(len(df[df['obs_name'].str.contains(oname)].index))*np.nan
-        t[:i.nobs] = [x[0] for x in i.time_series_data]
-    
-        df.loc[df['obs_name'].str.contains(oname),'time_series'] = t
-        df.loc[df['obs_name'].str.contains(oname),'obs_id'] = oname
-        
-        df.loc[df['obs_name'].str.contains(oname),'abssimulated'] = df[df['obs_name'].str.contains(oname)][1:]['simulated'] + df[df['obs_name'].str.contains(oname)]['simulated'].values[0]
-        df.loc[df['obs_name']==(oname),'abssimulated'] = df[df['obs_name']==oname]['simulated']
-        df.loc[df['obs_name'].str.contains(oname),'absobserved'] = df[df['obs_name'].str.contains(oname)][1:]['observed'] + df[df['obs_name'].str.contains(oname)]['observed'].values[0]
-        df.loc[df['obs_name']==(oname),'absobserved'] = df[df['obs_name']==oname]['observed']
-        
-        df.loc[df['obs_name']==(oname+'_1'),'abssimulated'] = df[df['obs_name']==(oname+'_1')]['simulated']
-        df.loc[df['obs_name']==(oname+'_1'),'absobserved'] = df[df['obs_name']==(oname+'_1')]['observed']
-        df.loc[df['obs_name']==(oname+'_1'),'abssimulated1'] = df[df['obs_name']==(oname+'_1')]['simulated']
-        df.loc[df['obs_name']==(oname+'_1'),'absobserved1'] = df[df['obs_name']==(oname+'_1')]['observed']
-    
-    for i, r in obsformation.iterrows():
-        df.loc[df['obs_id']==r['IDPOZO'],'formation'] = legend[r['ZONE']-1]
-        df.loc[df['obs_id']==r['IDPOZO'],'LON'] = r['X']
-        df.loc[df['obs_id']==r['IDPOZO'],'LAT'] = r['Y']
-    
-    return df, obsinfo, obsstats, obsformation
-
-def plt_cluster(df, km_cluster, filename):
+def plt_obs_cluster(df, km_cluster, filename):
     fig = plt.figure(figsize=(16, 12))
     ax = fig.add_subplot(111, projection='3d')
     
@@ -341,101 +352,3 @@ def plt_cluster(df, km_cluster, filename):
 
     fig.savefig(filename)
     plt.close()
-
-def plt_wellhydrographs(folder, name, filelocation, df=0, obsformation=0, obsinfo_loaded=True, timestep='d', startdate='1984-01-01', ddn_lim=[-50, 20], legend=['Lacustrine','Alluvial','Basalt','Volcaniclastic','Andesite']):
-    
-    if not isinstance(df, pd.DataFrame):
-        df, obsinfo, obsstats, obsformation = process_hobs(folder, name, legend=legend, obsinfo_loaded=obsinfo_loaded)
-    
-    filelocation = Path.cwd().joinpath('output').joinpath('plots').joinpath('observations').joinpath(filelocation)
-    filelocation.mkdir(exist_ok=True)
-    
-    for l in legend:
-        filelocation.joinpath(l).mkdir(exist_ok=True)
-    
-    for o in obsformation['IDPOZO']:
-        print(o)
-        ddn_data = df[df['obs_id']==o].copy()
-        ddn_data['time_series'] = pd.to_timedelta(ddn_data['time_series'], timestep) + pd.to_datetime(startdate)
-        ddn_data = ddn_data.set_index('time_series')
-        ddn_data['simulated'][0] = 0
-        ddn_data['observed'][0] = 0
-        
-        fig, axes = plt.subplots(2, 1, figsize=(5,12))
-        ddn_data['abssimulated'].plot(ax=axes[0])
-        ddn_data['absobserved'].plot(ax=axes[0])
-        axes[0].legend(['Simulated','Observed'])
-        axes[0].xaxis.label.set_visible(False)
-        
-        ddn_data['simulated'].plot(ax=axes[1])
-        ddn_data['observed'].plot(ax=axes[1])
-        axes[1].set_ylim(ddn_lim)
-        axes[1].legend(['Simulated','Observed'])
-        axes[1].xaxis.label.set_visible(False)
-        
-        plt.tight_layout()
-        filename = filelocation.joinpath(ddn_data['formation'][0]).joinpath(o+'.png')
-        print(filename)
-        plt.savefig(str(filename), dpi=600)
-        plt.close()
-        
-def plt_simvsobs(name, filename, df=0, obsformation=0, obsinfo_loaded=True):
-    
-    filename = str(Path.cwd() / 'output' / 'plots' / 'calibration' / filename)
-    
-    if not isinstance(df, pd.DataFrame):
-        df, obsinfo, obsstats, obsformation = process_hobs(name, obsinfo_loaded=obsinfo_loaded)
-        
-    # get coeffs of linear fit
-    x = df['absobserved1'].values
-    x = x[~np.isnan(x)]
-    y = df['abssimulated1'].values
-    y = y[~np.isnan(y)]
-    slope, intercept, r_value, p_value, std_err = stats.linregress(x,y)
-    
-    sns.set_style("whitegrid")
-    g = sns.lmplot(x='absobserved1', y='abssimulated1', hue='formation',data=df,legend=False,palette=dict(Alluvial=(1,0.867,0), Basalt=(0,0.788,0.498), Volcaniclastic=(0.9, 0, 0.455) ), size=8, aspect=1.2, scatter_kws={'edgecolor':"none",'s':10, 'alpha':0.3})
-    plt.plot(np.linspace(2000,2800,1000), np.linspace(2000,2800,1000), 'k',linestyle=':')
-    plt.plot(np.linspace(2000,2800,1000), intercept + slope*np.linspace(2000,2800,1000), 'grey', linewidth=2)
-    plt.legend(['Tarango (Volcaniclastic)','Alluvial','Fractured Basalt','One-to-one',"y = {0:.3f}x + {1:.1f}, R = {2:.3f} ".format(slope, intercept, r_value)], loc='upper left')
-    plt.xlim(2100,2650)
-    plt.ylim(2100,2650)
-    plt.xlabel('Observed Head (masl)')
-    plt.ylabel('Simulated Head (masl)')
-    plt.savefig(filename+'.png', dpi=600)
-    plt.savefig(filename+'.eps', dpi=600)
-    #plt.close()
-    
-    return slope, intercept, r_value, p_value, std_err 
-
-def plt_simvsobsddn(name, filename, df=0, obsformation=0, obsinfo_loaded=True):
-    
-    filename = str(Path.cwd() / 'output' / 'plots' / 'calibration' / filename)
-    
-    if not isinstance(df, pd.DataFrame):
-        df, obsinfo, obsstats, obsformation = process_hobs(name, obsinfo_loaded=obsinfo_loaded)
-
-    df.loc[df['simulated']>1000,'simulated'] = 0
-    df.loc[df['observed']>1000, 'observed'] = 0
-    
-    # get coeffs of linear fit
-    x = df['observed'].values
-    y = df['simulated'].values
-    slope, intercept, r_value, p_value, std_err = stats.linregress(x,y)
-    
-    sns.set_style("whitegrid")
-    g = sns.lmplot(x='observed', y='simulated', hue='formation',data=df,legend=False,palette=dict(Alluvial=(1,0.867,0), Basalt=(0,0.788,0.498), Volcaniclastic=(0.9, 0, 0.455)), size=8, aspect=1.2, scatter_kws={'edgecolor':"none",'s':10, 'alpha':0.3})
-    plt.plot(np.linspace(-60,60,1000), np.linspace(-60,60,1000), 'k',linestyle=':')
-    plt.plot(np.linspace(-60,60,1000), intercept + slope*np.linspace(-60,60,1000), 'grey', linewidth=2)
-    plt.legend(['Tarango (Volcaniclastic)','Alluvial','Fractured Basalt','One-to-one',"y = {0:.3f}x + {1:.1f}, R = {2:.3f} ".format(slope, intercept, r_value)],loc='upper left')
-    plt.xlim(-60,60)
-    plt.ylim(-60,60)
-    plt.xlabel('Observed Drawdown (m)')
-    plt.ylabel('Simulated Drawdown (m)')
-    plt.savefig(filename+'.png', dpi=600)
-    plt.savefig(filename+'.eps', dpi=600)
-    
-    return slope, intercept, r_value, p_value, std_err 
-#
-#def plt_sensitivity(sensitivity):
-#    
